@@ -1,79 +1,72 @@
 'use strict';
 
-var gameballService = require('*/cartridge/scripts/services/gameballService');
+var Site = require('dw/system/Site');
 var Logger = require('dw/system/Logger').getLogger('Gameball', 'gameball_customer_hooks');
+var gameballService = require('*/cartridge/scripts/services/gameballService');
+var gameballCredentials = require('*/cartridge/scripts/services/gameballCredentials');
 
 /**
- * Maps a SFCC Profile to the Gameball Expected JSON Payload (matching Salesforce Contacts)
+ * @returns {boolean} true if the integration is turned on and a Service
+ * Credential has been configured in Business Manager
+ */
+function isGameballEnabled() {
+    return !!Site.getCurrent().getCustomPreferenceValue('gameballEnabled') && gameballCredentials.isConfigured();
+}
+
+/**
+ * Builds the upsert body for POST integrations/customers.
+ * Gameball's v4.0 customers endpoint is a single idempotent upsert keyed on
+ * customerId - there is no separate create/update shape.
  * @param {dw.customer.Profile} profile - The SFCC Customer Profile
- * @returns {Array} - The JSON Array payload expected by Gameball Middleware
+ * @returns {Object} the request body expected by Gameball's customers endpoint
  */
-function createPayload(profile) {
-    if (!profile) return null;
+function buildCustomerPayload(profile) {
+    var displayName = ((profile.firstName || '') + ' ' + (profile.lastName || '')).trim();
 
-    return [{
-        Id: profile.customerNo,
-        FirstName: profile.firstName || '',
-        LastName: profile.lastName || '',
-        Email: profile.email || ''
-    }];
+    return {
+        customerId: profile.customerNo,
+        email: profile.email || undefined,
+        customerAttributes: {
+            displayName: displayName,
+            firstName: profile.firstName || '',
+            lastName: profile.lastName || '',
+            email: profile.email || ''
+        }
+    };
 }
 
 /**
- * Hook executed when a customer successfully registers a new account
- * @param {dw.customer.Customer} customer - The registered customer object
+ * Upserts a customer to Gameball. Shared by both the registered and updated
+ * hooks since Gameball's endpoint is idempotent on customerId.
+ * @param {dw.customer.Customer} customer - The SFCC customer object
+ * @param {string} hookName - name of the calling hook, for logging
  */
-function onCustomerRegistered(customer) {
+function upsertCustomer(customer, hookName) {
     try {
-        var profile = customer.profile;
+        if (!isGameballEnabled()) {
+            return;
+        }
+
+        var profile = customer && customer.profile;
         if (!profile) {
             return;
         }
 
-        var payload = createPayload(profile);
-        
         var result = gameballService.call({
-            path: 'salesforce/customers/create',
+            path: 'integrations/customers',
             method: 'POST',
-            body: payload
+            body: buildCustomerPayload(profile)
         });
 
         if (!result.isOk()) {
-            Logger.error('Gameball Customer Create Failed: {0}', result.errorMessage);
+            Logger.error('Gameball customer upsert failed ({0}): {1}', hookName, result.errorMessage);
         }
     } catch (e) {
-        Logger.error('Exception in Gameball app.customer.registered hook: {0}', e.message);
-    }
-}
-
-/**
- * Hook executed when a customer updates their profile
- * @param {dw.customer.Customer} customer - The updated customer object
- */
-function onCustomerUpdated(customer) {
-    try {
-        var profile = customer.profile;
-        if (!profile) {
-            return;
-        }
-
-        var payload = createPayload(profile);
-        
-        var result = gameballService.call({
-            path: 'salesforce/customers/update',
-            method: 'POST',
-            body: payload
-        });
-
-        if (!result.isOk()) {
-            Logger.error('Gameball Customer Update Failed: {0}', result.errorMessage);
-        }
-    } catch (e) {
-        Logger.error('Exception in Gameball app.customer.updated hook: {0}', e.message);
+        Logger.error('Exception in Gameball {0} hook: {1}', hookName, e.message);
     }
 }
 
 module.exports = {
-    registered: onCustomerRegistered,
-    updated: onCustomerUpdated
+    registered: function (customer) { upsertCustomer(customer, 'app.customer.registered'); },
+    updated: function (customer) { upsertCustomer(customer, 'app.customer.updated'); }
 };
