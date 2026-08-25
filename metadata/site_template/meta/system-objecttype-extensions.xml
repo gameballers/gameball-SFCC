@@ -10,11 +10,61 @@
                 <externally-managed-flag>false</externally-managed-flag>
                 <default-value>false</default-value>
             </attribute-definition>
+            <attribute-definition attribute-id="gameballExcludeGiftCertificateTender">
+                <display-name xml:lang="x-default">Exclude Gift Certificate Tender from Gameball totalPaid</display-name>
+                <description xml:lang="x-default">When enabled (the default), the portion of an order paid for with a Gift Certificate is subtracted from the totalPaid amount reported to Gameball, so points are not awarded on gift-certificate-funded spend.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballConfigs">
                 <display-name xml:lang="x-default">Gameball Settings</display-name>
                 <attribute attribute-id="gameballEnabled"/>
+                <attribute attribute-id="gameballExcludeGiftCertificateTender"/>
+            </attribute-group>
+        </group-definitions>
+    </type-extension>
+    <type-extension type-id="Order">
+        <custom-attribute-definitions>
+            <attribute-definition attribute-id="gbTrackState">
+                <display-name xml:lang="x-default">Gameball Track State</display-name>
+                <description xml:lang="x-default">Outcome of syncing this order to Gameball: TRACKED (successfully sent), SKIPPED (excluded by a gating rule - integration off, guest order, replacement order, or cancelled/failed status), or FAILED (the API call errored or returned a non-ok result).</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbGameballOrderId">
+                <display-name xml:lang="x-default">Gameball Order Id</display-name>
+                <description xml:lang="x-default">The exact orderId value sent to Gameball's integrations/orders endpoint. Only set when gbTrackState is TRACKED. Needed so a future refund feature can replay this same id.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbCustomerId">
+                <display-name xml:lang="x-default">Gameball Customer Id</display-name>
+                <description xml:lang="x-default">The exact customerId value sent to Gameball for this order. Only set when gbTrackState is TRACKED. Kept for auditability.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbLastError">
+                <display-name xml:lang="x-default">Gameball Last Error</display-name>
+                <description xml:lang="x-default">The error/result message from the most recent failed Gameball sync attempt on this order. Only set when gbTrackState is FAILED. Surfaced here for support visibility since there is no Gameball dashboard in this iteration.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+        </custom-attribute-definitions>
+        <group-definitions>
+            <attribute-group group-id="GameballOrder">
+                <display-name xml:lang="x-default">Gameball</display-name>
+                <attribute attribute-id="gbTrackState"/>
+                <attribute attribute-id="gbGameballOrderId"/>
+                <attribute attribute-id="gbCustomerId"/>
+                <attribute attribute-id="gbLastError"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
