@@ -2,27 +2,19 @@
 <metadata xmlns="http://www.demandware.com/xml/impex/metadata/2006-10-31">
     <type-extension type-id="SitePreferences">
         <custom-attribute-definitions>
-            <attribute-definition attribute-id="Gameball_Enabled">
+            <attribute-definition attribute-id="gameballEnabled">
                 <display-name xml:lang="x-default">Enable Gameball</display-name>
-                <description xml:lang="x-default">Turn the Gameball Integration on or off.</description>
+                <description xml:lang="x-default">Turn the Gameball Integration on or off. Also requires the "gameball.http.api.cred" Service Credential (Administration &gt; Operations &gt; Services &gt; Service Credentials) to be filled in with a valid API Key (User ID) and Secret Key (Password).</description>
                 <type>boolean</type>
                 <mandatory-flag>false</mandatory-flag>
                 <externally-managed-flag>false</externally-managed-flag>
                 <default-value>false</default-value>
             </attribute-definition>
-            <attribute-definition attribute-id="Gameball_API_Key">
-                <display-name xml:lang="x-default">Gameball API Key</display-name>
-                <description xml:lang="x-default">Your unique Gameball API Key from the Dashboard.</description>
-                <type>string</type>
-                <mandatory-flag>false</mandatory-flag>
-                <externally-managed-flag>false</externally-managed-flag>
-            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
-            <attribute-group group-id="Gameball">
+            <attribute-group group-id="GameballConfigs">
                 <display-name xml:lang="x-default">Gameball Settings</display-name>
-                <attribute attribute-id="Gameball_Enabled"/>
-                <attribute attribute-id="Gameball_API_Key"/>
+                <attribute attribute-id="gameballEnabled"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
