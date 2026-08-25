@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<services xmlns="http://www.demandware.com/xml/impex/services/2014-09-26">
+
+    <service-credential service-credential-id="gameball.http.api.cred">
+        <url>https://api.gameball.co/api/v4.0</url>
+        <user-id/>
+        <password/>
+    </service-credential>
+
+    <service-profile service-profile-id="gameball.http.api.profile">
+        <timeout-millis>15000</timeout-millis>
+    </service-profile>
+
+    <service service-id="gameball.http.api">
+        <service-type>HTTP</service-type>
+        <enabled>true</enabled>
+        <log-prefix>Gameball</log-prefix>
+        <comm-log-enabled>false</comm-log-enabled>
+        <mock-mode-enabled>false</mock-mode-enabled>
+        <profile-id>gameball.http.api.profile</profile-id>
+        <credential-id>gameball.http.api.cred</credential-id>
+    </service>
+
+</services>
