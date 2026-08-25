@@ -1,57 +1,66 @@
 <iscontent type="text/html" charset="UTF-8" compact="true"/>
 <isscript>
     var Site = require('dw/system/Site').getCurrent();
-    var isEnabled = Site.getCustomPreferenceValue('Gameball_Enabled');
     var gameballCredentials = require('*/cartridge/scripts/services/gameballCredentials');
-    var apiKey = gameballCredentials.getApiKey();
+    var isEnabled = Site.getCustomPreferenceValue('gameballEnabled');
+    var apiKey = isEnabled ? gameballCredentials.getApiKey() : null;
 </isscript>
 
 <isif condition="${isEnabled && !empty(apiKey)}">
+    <isscript>
+        // Extract language from locale (e.g. 'en_US' -> 'en')
+        var locale = request.locale;
+        var lang = locale ? locale.split('_')[0] : 'en';
 
-
-
-<isscript>
-    var locale = request.locale;
-    var lang = locale ? locale.split('_')[0] : 'en';
-
-    var initPayload = {
-        APIKey: apiKey || 'MISSING_API_KEY',
-        lang: lang,
-        platform: 'salesforce'
-    };
-
-    if (customer.authenticated && customer.profile) {
-        initPayload.playerUniqueId = customer.profile.customerNo;
-        initPayload.playerAttributes = {
-            displayName: (customer.profile.firstName || '') + ' ' + (customer.profile.lastName || ''),
-            firstName: customer.profile.firstName || '',
-            lastName: customer.profile.lastName || '',
-            email: customer.profile.email || ''
+        var initPayload = {
+            APIKey: apiKey,
+            lang: lang,
+            platform: 'salesforce'
         };
-    }
-</isscript>
 
-<!-- Gameball SDK Dynamically Loaded via JavaScript -->
-<script>
-    (function() {
-        var payload = <isprint value="${JSON.stringify(initPayload)}" encoding="off" />;
-        
-        if (!window.GbSdk) {
-            var script = document.createElement("script");
-            script.type = "text/javascript";
-            script.async = true;
-            script.src = "https://assets.gameball.co/widget/js/gameball-init.min.js";
-            
-            script.onload = function() {
-                if (window.GbSdk && window.GbSdk.init) {
-                    window.GbSdk.init(payload);
-                    console.log('Gameball Widget Initialized Successfully (SFCC)');
-                }
+        if (customer.authenticated && customer.profile) {
+            initPayload.playerUniqueId = customer.profile.customerNo;
+            initPayload.playerAttributes = {
+                displayName: (customer.profile.firstName || '') + ' ' + (customer.profile.lastName || ''),
+                firstName: customer.profile.firstName || '',
+                lastName: customer.profile.lastName || '',
+                email: customer.profile.email || ''
             };
-            document.head.appendChild(script);
-        } else {
-            window.GbSdk.init(payload);
         }
-    })();
-</script>
+
+        // Neutralize sequences that could break out of the inline <script>
+        // block below (e.g. a customer first/last name containing
+        // "</script><script>...") plus the historical U+2028/U+2029
+        // JS-parse hazard. Escaping "<" alone kills the </script> breakout;
+        // ">" and "&" are escaped too as defense in depth.
+        var payloadJson = JSON.stringify(initPayload)
+            .replace(/</g, '\\u003c')
+            .replace(/>/g, '\\u003e')
+            .replace(/&/g, '\\u0026')
+            .replace(/\u2028/g, '\\u2028')
+            .replace(/\u2029/g, '\\u2029');
+    </isscript>
+
+    <!-- Gameball SDK Dynamically Loaded via JavaScript -->
+    <script>
+        (function() {
+            var payload = <isprint value="${payloadJson}" encoding="off" />;
+
+            if (!window.GbSdk) {
+                var script = document.createElement("script");
+                script.type = "text/javascript";
+                script.async = true;
+                script.src = "https://assets.gameball.co/widget/js/gameball-init.min.js";
+
+                script.onload = function() {
+                    if (window.GbSdk && window.GbSdk.init) {
+                        window.GbSdk.init(payload);
+                    }
+                };
+                document.head.appendChild(script);
+            } else {
+                window.GbSdk.init(payload);
+            }
+        })();
+    </script>
 </isif>
