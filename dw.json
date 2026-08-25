@@ -1,0 +1,7 @@
+{
+  "hostname": "your-sandbox-url.demandware.net",
+  "username": "your.email@gameball.co",
+  "password": "your-sandbox-password",
+  "cartridge": ["int_gameball"],
+  "code-version": "version1"
+}
