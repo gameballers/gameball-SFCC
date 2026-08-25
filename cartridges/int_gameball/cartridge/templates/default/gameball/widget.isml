@@ -1,8 +1,9 @@
 <iscontent type="text/html" charset="UTF-8" compact="true"/>
 <isscript>
     var Site = require('dw/system/Site').getCurrent();
-    var isEnabled = Site.getCustomPreferenceValue('Gameball_Enabled');
-    var apiKey = Site.getCustomPreferenceValue('Gameball_API_Key');
+    var gameballCredentials = require('*/cartridge/scripts/services/gameballCredentials');
+    var isEnabled = Site.getCustomPreferenceValue('gameballEnabled');
+    var apiKey = isEnabled ? gameballCredentials.getApiKey() : null;
 </isscript>
 
 <isif condition="${isEnabled && !empty(apiKey)}">
@@ -28,13 +29,25 @@
                 email: customer.profile.email || ''
             };
         }
+
+        // Neutralize sequences that could break out of the inline <script>
+        // block below (e.g. a customer first/last name containing
+        // "</script><script>...") plus the historical U+2028/U+2029
+        // JS-parse hazard. Escaping "<" alone kills the </script> breakout;
+        // ">" and "&" are escaped too as defense in depth.
+        var payloadJson = JSON.stringify(initPayload)
+            .replace(/</g, '\\u003c')
+            .replace(/>/g, '\\u003e')
+            .replace(/&/g, '\\u0026')
+            .replace(/\u2028/g, '\\u2028')
+            .replace(/\u2029/g, '\\u2029');
     </isscript>
 
     <!-- Gameball SDK Dynamically Loaded via JavaScript -->
     <script>
         (function() {
-            var payload = <isprint value="${JSON.stringify(initPayload)}" encoding="off" />;
-            
+            var payload = <isprint value="${payloadJson}" encoding="off" />;
+
             // Load Gameball SDK if not already present
             if (!window.GbSdk) {
                 var script = document.createElement("script");
