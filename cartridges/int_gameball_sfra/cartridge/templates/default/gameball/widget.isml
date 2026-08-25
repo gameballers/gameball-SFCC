@@ -1,0 +1,57 @@
+<iscontent type="text/html" charset="UTF-8" compact="true"/>
+<isscript>
+    var Site = require('dw/system/Site').getCurrent();
+    var isEnabled = Site.getCustomPreferenceValue('Gameball_Enabled');
+    var gameballCredentials = require('*/cartridge/scripts/services/gameballCredentials');
+    var apiKey = gameballCredentials.getApiKey();
+</isscript>
+
+<isif condition="${isEnabled && !empty(apiKey)}">
+
+
+
+<isscript>
+    var locale = request.locale;
+    var lang = locale ? locale.split('_')[0] : 'en';
+
+    var initPayload = {
+        APIKey: apiKey || 'MISSING_API_KEY',
+        lang: lang,
+        platform: 'salesforce'
+    };
+
+    if (customer.authenticated && customer.profile) {
+        initPayload.playerUniqueId = customer.profile.customerNo;
+        initPayload.playerAttributes = {
+            displayName: (customer.profile.firstName || '') + ' ' + (customer.profile.lastName || ''),
+            firstName: customer.profile.firstName || '',
+            lastName: customer.profile.lastName || '',
+            email: customer.profile.email || ''
+        };
+    }
+</isscript>
+
+<!-- Gameball SDK Dynamically Loaded via JavaScript -->
+<script>
+    (function() {
+        var payload = <isprint value="${JSON.stringify(initPayload)}" encoding="off" />;
+        
+        if (!window.GbSdk) {
+            var script = document.createElement("script");
+            script.type = "text/javascript";
+            script.async = true;
+            script.src = "https://assets.gameball.co/widget/js/gameball-init.min.js";
+            
+            script.onload = function() {
+                if (window.GbSdk && window.GbSdk.init) {
+                    window.GbSdk.init(payload);
+                    console.log('Gameball Widget Initialized Successfully (SFCC)');
+                }
+            };
+            document.head.appendChild(script);
+        } else {
+            window.GbSdk.init(payload);
+        }
+    })();
+</script>
+</isif>
