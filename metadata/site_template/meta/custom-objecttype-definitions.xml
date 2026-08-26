@@ -53,4 +53,83 @@
             </attribute-group>
         </group-definitions>
     </custom-type>
+    <!-- item 04 -->
+    <custom-type type-id="GameballErasureRequest">
+        <display-name xml:lang="x-default">Gameball Erasure Request</display-name>
+        <description xml:lang="x-default">Captured right-to-be-forgotten requests. One row per Gameball customer id awaiting deletion, created the moment an SFCC customer is deleted because the id cannot be recovered afterwards. WARNING: this store is NOT free of personal data - the key is the shopper's Gameball customer id, a pseudonymous identifier, which is precisely what an erasure request exists to remove. Retention is therefore days, not months, and no name, email, mobile or address is ever written here. It is single-purpose: nothing but erasure requests may ever be stored in it, and it carries no payload, no event kind and no priority - it is not, and must never become, a general outbound queue.</description>
+        <staging-mode>no-staging</staging-mode>
+        <storage-scope>organization</storage-scope>
+        <retention-days>14</retention-days>
+        <key-definition attribute-id="gbCustomerId">
+            <display-name xml:lang="x-default">Gameball Customer Id</display-name>
+            <description xml:lang="x-default">The exact customerId value that was sent to Gameball for this shopper, captured before the SFCC profile was destroyed because after deletion it can never be recovered. Also the deterministic dedupe key: enrolling the same shopper twice updates one row instead of creating two.</description>
+            <type>string</type>
+            <min-length>1</min-length>
+        </key-definition>
+        <attribute-definitions>
+            <attribute-definition attribute-id="gbStatus">
+                <display-name xml:lang="x-default">Gameball Erasure Status</display-name>
+                <description xml:lang="x-default">PENDING - waiting for the Gameball Customer Erasure job. SUCCESS - Gameball confirmed the customer is gone, which includes the case where Gameball had never heard of them. FAILED - every retry was used up, Gameball rejected the request permanently, or the request sat PENDING for more than 7 days without ever reaching Gameball; an operator must resolve this before platform retention removes the row, and the erasure job stays red until they do.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbSource">
+                <display-name xml:lang="x-default">Gameball Erasure Source</display-name>
+                <description xml:lang="x-default">Which path captured this request: DATA_API (an OCAPI/SCAPI Data API customer delete), HELPER_API (merchant code, a DSAR controller or a partner cartridge calling gameballPrivacyApi.requestErasure), or BM_MANUAL (an operator-initiated request through gameballPrivacyApi.requestErasureById). Business Manager customer deletion is NOT hookable in SFCC and never appears here - see docs/gameball-gdpr.md.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbRequestedAt">
+                <display-name xml:lang="x-default">Requested At</display-name>
+                <description xml:lang="x-default">When the erasure was first captured. Never overwritten by a repeat request, so this is the true start of the merchant's statutory response clock.</description>
+                <type>datetime</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbLastAttemptAt">
+                <display-name xml:lang="x-default">Last Attempt At</display-name>
+                <description xml:lang="x-default">When the erasure job last called Gameball for this request. Empty means the job has not reached it yet. This counts erasure calls only; the identically-named attribute on Order counts order-tracking attempts and the two are unrelated.</description>
+                <type>datetime</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbCompletedAt">
+                <display-name xml:lang="x-default">Completed At</display-name>
+                <description xml:lang="x-default">When gbStatus became SUCCESS. The purge horizon set by Gameball Erasure Success Retention (Days) is measured from this instant, not from when the request was captured.</description>
+                <type>datetime</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbAttempts">
+                <display-name xml:lang="x-default">Attempts</display-name>
+                <description xml:lang="x-default">How many times Gameball has been called for this request, compared against Gameball Erasure Max Attempts. Deliberately NOT incremented when SFCC itself refused to make the call - an open circuit breaker or the service rate limiter - because a valve the platform closed must not burn the retry budget. The default of 0 applies to rows created after this metadata was imported; code never trusts it and always reads the value as a number defaulting to zero.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>0</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbStatusDetails">
+                <display-name xml:lang="x-default">Status Details</display-name>
+                <description xml:lang="x-default">Bounded, scrubbed diagnostic for the last attempt: the cartridge's own disposition, the HTTP status, Gameball's error code and Gameball's requestId, which is the token Gameball support asks for. Never the raw response body, never an address, never any other echoed field - a response body can echo submitted data back, and this store exists to hold as little as possible about the shopper being erased.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+        </attribute-definitions>
+        <group-definitions>
+            <attribute-group group-id="GameballErasure">
+                <display-name xml:lang="x-default">Gameball Erasure</display-name>
+                <attribute attribute-id="gbCustomerId"/>
+                <attribute attribute-id="gbStatus"/>
+                <attribute attribute-id="gbSource"/>
+                <attribute attribute-id="gbRequestedAt"/>
+                <attribute attribute-id="gbLastAttemptAt"/>
+                <attribute attribute-id="gbCompletedAt"/>
+                <attribute attribute-id="gbAttempts"/>
+                <attribute attribute-id="gbStatusDetails"/>
+            </attribute-group>
+        </group-definitions>
+    </custom-type>
 </metadata>

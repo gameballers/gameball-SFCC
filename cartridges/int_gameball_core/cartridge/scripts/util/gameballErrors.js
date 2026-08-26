@@ -95,7 +95,32 @@ var DEFAULT_TABLE = {
  */
 var SCOPE_TABLES = {
     CUSTOMER: {},
-    DELETE: {},
+
+    // The GDPR erasure item. Both rows say the same thing in two vocabularies:
+    // the customer is not in Gameball. On every other endpoint that is a
+    // problem; here it is precisely the state the erasure request asked for, so
+    // it settles the mandate rather than retrying it. '7000' is the row that
+    // does the work - it is the vocabulary Gameball actually uses for Customer
+    // Not Found, and it also silently and correctly absorbs the very common
+    // case of a shopper who registered while gameballEnabled was off and was
+    // therefore never synced at all.
+    //
+    // '404' is keyed as an HTTP status rather than a Gameball code, and
+    // classify() applies it ONLY to a response that provably came from the
+    // Gameball application - see the statusOverride branch there, which
+    // requires a requestId. A bare 404 is deliberately NOT success. The delete
+    // endpoint is a non-standard alias whose availability per account is
+    // unverified, so "the customer is gone" and "this endpoint is not routed"
+    // arrive at this table as the same status line; reading the second as the
+    // first would report every mandate honoured, purge the tombstones seven
+    // days later, and delete nobody. A false FAILED costs an operator one look
+    // at the Gameball dashboard, a false SUCCESS costs the mandate and the only
+    // record of it.
+    DELETE: {
+        '404': { disposition: DISPOSITION.SUCCESS, remediation: '' },
+        '7000': { disposition: DISPOSITION.SUCCESS, remediation: '' }
+    },
+
     ORDER: {},
     REFUND: {}
 };
@@ -430,6 +455,45 @@ function classify(result, context) {
                     : String(reason);
             }
 
+            return verdict;
+        }
+
+        // The scope table is consulted a second time, keyed on the HTTP status,
+        // BEFORE the shared status ladder below. One status can mean opposite
+        // things at two endpoints: a 404 from a customer upsert is a broken
+        // request, while a 404 from the erasure delete can be the goal state.
+        // The ladder is endpoint-agnostic by construction and cannot express
+        // that.
+        //
+        // Two conditions narrow it, and both are load-bearing rather than
+        // defensive:
+        //
+        //   requestId must be present. Section 13.8 says every Gameball error
+        //   carries code AND requestId, so a requestId is proof the Gameball
+        //   APPLICATION answered. A gateway 404, a stale API version in the
+        //   Service Credential URL, or an endpoint alias that is not routed on
+        //   the account produces a 404 with an HTML or empty body and no
+        //   requestId - and letting THAT reach a SUCCESS row would report every
+        //   erasure honoured while deleting nobody, then purge the evidence.
+        //   Such a response falls through to the ladder below and lands
+        //   PERMANENT, which is the direction a compliance feature must err in.
+        //
+        //   code must be absent. If Gameball named a code, the code is the more
+        //   specific answer and has already had its turn on the ladder above;
+        //   overriding it with the bare status would, for instance, turn a
+        //   route-level 4004 "resource not found" into "this customer is gone".
+        var isGameballAnswer = !verdict.code && !!verdict.requestId;
+        var statusOverride = (verdict.httpStatus && isGameballAnswer)
+            ? scopeTable(context)[String(verdict.httpStatus)]
+            : null;
+        if (statusOverride) {
+            verdict.disposition = statusOverride.disposition;
+            if (!verdict.code) {
+                verdict.code = String(verdict.httpStatus);
+            }
+            if (!verdict.message) {
+                verdict.message = 'HTTP ' + verdict.httpStatus;
+            }
             return verdict;
         }
 

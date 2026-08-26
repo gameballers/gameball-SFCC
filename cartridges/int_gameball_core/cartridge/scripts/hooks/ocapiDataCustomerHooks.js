@@ -66,8 +66,45 @@ function afterPATCH() {
     return runner.run('dw.ocapi.data.customer_list.customer.afterPATCH', 'OCAPI_DATA_PATCH', arguments);
 }
 
+/**
+ * dw.ocapi.data.customer_list.customer.beforeDELETE - a customer is about to be
+ * deleted through the Data API. SINGULAR namespace, UPPERCASE method.
+ *
+ * The crux of the GDPR erasure feature, and the reason it is beforeDELETE and
+ * not the sibling afterDelete. afterDelete(customerListId) receives NO Customer
+ * argument: by the time it fires the profile is destroyed, nothing can be read,
+ * and the Gameball customerId is unrecoverable forever. Registering the wrong
+ * one produces a hook that runs, logs nothing alarming, and silently erases
+ * nothing - which for a legal mandate is the worst failure mode available.
+ *
+ * A lowercase beforeDelete alias was considered as a hedge against the exact
+ * casing being wrong and was REJECTED: if SFCC validates hook names at
+ * registration time, an unknown name is a hard error that takes the whole
+ * hooks.json down and silently disables all five sibling hooks with it. That
+ * blast radius is far larger than the failure being hedged. The casing is
+ * settled by the sandbox spike instead, and if it turns out to be lowercase
+ * this one name changes.
+ *
+ * Deliberately NOT gated by gameballSyncDataApiCustomers. That preference
+ * governs whether a Data-API WRITE is upserted to Gameball, which is a cost and
+ * latency decision. This is a capture, it makes no API call, and switching the
+ * upsert path off must never switch off the ability to honour an erasure
+ * request.
+ *
+ * Takes no named parameters for the same reason as its siblings: the Data-API
+ * hook signatures are UNVERIFIED and may lead with a dw.customer.CustomerList,
+ * so arguments is forwarded whole and the runner scans it for the Profile.
+ *
+ * @returns {dw.system.Status} always Status.OK - a throw here would roll back
+ *          the customer deletion itself
+ */
+function beforeDELETE() {
+    return runner.runErasureCapture('dw.ocapi.data.customer_list.customer.beforeDELETE', arguments);
+}
+
 module.exports = {
     afterPOST: afterPOST,
     afterPUT: afterPUT,
-    afterPATCH: afterPATCH
+    afterPATCH: afterPATCH,
+    beforeDELETE: beforeDELETE
 };

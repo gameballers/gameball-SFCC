@@ -115,6 +115,31 @@
                 <externally-managed-flag>false</externally-managed-flag>
                 <default-value>10</default-value>
             </attribute-definition>
+            <!-- item 04 -->
+            <attribute-definition attribute-id="gameballErasureEnabled">
+                <display-name xml:lang="x-default">Enable Gameball Customer Erasure</display-name>
+                <description xml:lang="x-default">Master switch for the Gameball Customer Erasure job. When OFF, right-to-be-forgotten requests are still captured and stored - nothing is lost - but no customer is deleted from Gameball. Turning it ON later drains whatever backlog is still inside the 14-day retention window. Gameball's delete is a HARD delete with no undo and no anonymize alternative, so read docs/gameball-gdpr.md before enabling it. Note that capture is deliberately NOT gated by this preference: the Gameball customer id is destroyed by the SFCC deletion itself, so it has to be recorded whether or not the drain is switched on.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>false</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballErasureMaxAttempts">
+                <display-name xml:lang="x-default">Gameball Erasure Max Attempts</display-name>
+                <description xml:lang="x-default">How many times the Gameball Customer Erasure job calls Gameball for one customer before marking the request FAILED. The job runs every 30 minutes, so the default of 5 is roughly a 2.5-hour recovery window for a transient Gameball outage. Attempts refused by SFCC itself - an open circuit breaker or the service rate limiter - do not count, because a valve the platform closed must not burn a legal mandate's budget; a request stuck that way is instead marked FAILED once it has been PENDING for 7 days, so it cannot expire unnoticed. A FAILED request turns the job red on every subsequent run until it is resolved, and is removed by platform retention 14 days after it was first captured; it must be resolved inside that window or the mandate is lost and has to be re-issued from the Gameball dashboard. See docs/gameball-gdpr.md for the two ways to resolve one.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>5</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballErasureSuccessRetentionDays">
+                <display-name xml:lang="x-default">Gameball Erasure Success Retention (Days)</display-name>
+                <description xml:lang="x-default">How long a completed erasure request is kept before the job deletes it. The row holds the shopper's Gameball customer id, which is exactly the pseudonymous identifier the erasure request existed to remove, so this is deliberately short. The Custom Object's own 14-day retention is the backstop, not the policy.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>7</default-value>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballConfigs">
@@ -132,6 +157,9 @@
                 <attribute attribute-id="gameballCustomerDeltaMaxProfilesPerRun"/>
                 <attribute attribute-id="gameballAllowNonProductionSync"/>
                 <attribute attribute-id="gameballMaxRequestsPerSecond"/>
+                <attribute attribute-id="gameballErasureEnabled"/>
+                <attribute attribute-id="gameballErasureMaxAttempts"/>
+                <attribute attribute-id="gameballErasureSuccessRetentionDays"/>
             </attribute-group>
         </group-definitions>
     </type-extension>

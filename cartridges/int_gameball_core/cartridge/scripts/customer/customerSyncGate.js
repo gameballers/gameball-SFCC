@@ -1,6 +1,7 @@
 'use strict';
 
 var Site = require('dw/system/Site');
+var erasureStore = require('*/cartridge/scripts/privacy/erasureStore');
 var gameballCredentials = require('*/cartridge/scripts/services/gameballCredentials');
 
 // The canonical entry-point vocabulary, persisted verbatim into
@@ -189,7 +190,8 @@ function evaluate(profile, source) {
         return { shouldSync: false, skipState: SKIP_STATE, reason: 'source_disabled' };
     }
 
-    if (!getCustomerNo(profile)) {
+    var customerNo = getCustomerNo(profile);
+    if (!customerNo) {
         // customerId is the upsert's idempotent key and is Required: Yes. An
         // empty one earns a guaranteed 3001 and spends one of the
         // 360-per-30-seconds customer-POST budget to do it.
@@ -204,6 +206,44 @@ function evaluate(profile, source) {
         // a permanently orphaned Gameball profile. Default off, which preserves
         // today's behaviour exactly.
         return { shouldSync: false, skipState: SKIP_STATE, reason: 'no_email' };
+    }
+
+    if (erasureStore.hasRequest(customerNo)) {
+        // A right-to-be-forgotten request has been captured for this shopper.
+        // Without this rule the hourly delta sweep would recreate, in Gameball,
+        // the exact profile the erasure job is about to delete - and would do
+        // it again the next hour, and the hour after, so the two jobs would
+        // fight forever and the mandate would never be honoured.
+        //
+        // A SETTLED request blocks too, and that is the correction to a
+        // genuinely dangerous first version of this rule. It originally
+        // reopened the gate the moment gbStatus became SUCCESS, on the
+        // reasoning that a profile still present in SFCC afterwards is either a
+        // re-registration or a DSAR served without deleting the account. What
+        // that missed is that enrolment clears gbSyncHash - a persistent write,
+        // so it bumps lastModified and pulls the profile into the delta job's
+        // lookback window, and with no stored hash the "unchanged"
+        // short-circuit cannot fire either. The sweep five minutes after the
+        // drain therefore re-POSTed the erased shopper's name, email, mobile and
+        // date of birth, silently, on a green job, with getErasureStatus still
+        // answering SUCCESS.
+        //
+        // The block lasts as long as the tombstone: gameballErasureSuccessRetentionDays
+        // (default 7) after Gameball confirms the deletion, or platform
+        // retention at 14 days for a FAILED one, which is right - an unhonoured
+        // mandate is the last state in which more of this shopper's data should
+        // be sent. It is deliberately not permanent, because there is no
+        // opt-out flag on a Profile and inventing one here would be consent
+        // gating, which is out of scope. docs/gameball-gdpr.md says plainly
+        // what follows from that: an erasure is durable only when the SFCC
+        // customer is deleted too.
+        //
+        // Deliberately the LAST rule, not the first. It is the only rule that
+        // costs a Custom Object read, and the delta sweep evaluates this gate
+        // once per in-window profile, so putting it behind the four getter-cheap
+        // rules keeps that read off every profile the sweep was going to
+        // discard anyway.
+        return { shouldSync: false, skipState: SKIP_STATE, reason: 'erasure_requested' };
     }
 
     return { shouldSync: true, skipState: null, reason: '' };
