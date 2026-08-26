@@ -121,7 +121,107 @@ var SCOPE_TABLES = {
         '7000': { disposition: DISPOSITION.SUCCESS, remediation: '' }
     },
 
-    ORDER: {},
+    // The order-retry item. Ownership is deliberately narrow: arbitration
+    // restricts item 06 to exactly the 9000-9008 range plus its own synthetic
+    // transport tokens - it does NOT extend DEFAULT_TABLE with the rest of the
+    // 3xxx/6xxx/7xxx catalogue spec 06 itself enumerates, because most of
+    // those rows are already owned by item 03 (see DEFAULT_TABLE above) and
+    // the remainder (3002/3004/3005/.../6001/6002/7002-7006/etc.) have no
+    // owner in this table and are left to the DEFAULT_TABLE-miss fail-safe
+    // (unknown code -> TRANSIENT) rather than guessed at here. A code added
+    // to DEFAULT_TABLE later automatically applies to every scope, ORDER
+    // included, since scopeTable() is consulted first and only intercepts the
+    // codes actually listed below.
+    ORDER: {
+        // 9000-9008 (build-plan section 13.8's order-tracking verification
+        // range). 9004 is the flagship: it is the signal Gameball's own
+        // idempotency guarantee rests on (a re-POST of the same orderId is
+        // REJECTED, not silently re-applied) - see build-plan section 5.5's
+        // "never blind-retry" guard and risk R-2 in arbitration section 8,
+        // which is why item 07 inherits this row unchanged. 9001 and 9003 are
+        // the sibling duplicate-signal codes ("already cancelled" /
+        // "duplicate timestamp exists") and settle the same way: the order is
+        // already on Gameball's side, which is the desired end state, so
+        // re-sending it is success, not an error. None of the three are
+        // reachable on order tracking today (order tracking has no cancel
+        // path and orderDate is immutable per order, so a genuine duplicate
+        // orderId/timestamp can only originate from THIS job re-sending its
+        // own prior attempt) - they are classified anyway so item 07's refund
+        // reuse and any future caller inherit a complete table rather than a
+        // gap that silently falls through to "unknown -> retry forever".
+        '9000': { disposition: DISPOSITION.PERMANENT, remediation: '' },
+        '9001': { disposition: DISPOSITION.ALREADY_APPLIED, remediation: '' },
+        '9002': { disposition: DISPOSITION.PERMANENT, remediation: '' },
+        '9003': { disposition: DISPOSITION.ALREADY_APPLIED, remediation: '' },
+        '9004': { disposition: DISPOSITION.ALREADY_APPLIED, remediation: '' },
+        // 9005 is singled out for a remediation string (build-plan section
+        // 4.4): every other PERMANENT row in this range is either a data
+        // problem intrinsic to the order or unreachable without the
+        // redemption flow (Skip), but a reversed-transaction-not-found on a
+        // PLAIN order-tracking POST is almost always a case mismatch between
+        // the orderId this cartridge sent and what Gameball has stored, which
+        // is exactly the kind of thing an operator can go fix.
+        '9005': { disposition: DISPOSITION.PERMANENT, remediation: 'reversed transaction not found - almost always an orderId casing mismatch' },
+        // 9006 (hold reference not found) and 9008 (insufficient point
+        // balance) are only reachable with a redemption block, which is
+        // Skip: Redemption/spend flow in this iteration - classified for
+        // table completeness only, per spec 06 section 7.1's own note.
+        '9006': { disposition: DISPOSITION.PERMANENT, remediation: '' },
+        // 9007 (invalid transaction time) - a far-past orderDate. Permanent
+        // here; backfill of pre-cartridge orders is Skip, so there is no
+        // future item that would need this reclassified.
+        '9007': { disposition: DISPOSITION.PERMANENT, remediation: '' },
+        '9008': { disposition: DISPOSITION.PERMANENT, remediation: '' },
+
+        // Synthetic transport tokens - never a Gameball code, always something
+        // THIS cartridge wrote to gbLastErrorCode because the live
+        // dw.svc.Result could not be classified as a normal Gameball
+        // response. classify() above (frozen, item-03-owned code per
+        // arbitration section 4.9) cannot itself produce these - its
+        // HTTP-status fallback and its result.status === 'SERVICE_UNAVAILABLE'
+        // branch are both endpoint-agnostic and have no ORDER-specific notion
+        // of "ambiguous". gameballOrderApi.js's narrowOrderAmbiguity()
+        // (item 06's own file, not an edit to classify()) recognises the raw
+        // dw.svc.Result shapes that mean "the POST may have landed" and
+        // rewrites classify()'s verdict to the tokens below AFTER classify()
+        // runs, so this table is where those rewritten tokens land on their
+        // NEXT round-trip through classifyStoredCode:
+        //   PROBE_FAILED and EXCEPTION are written directly by
+        //     gameballOrderApi.js (a failed verification GET, and an
+        //     exception raised after gameballService.call() returned) - never
+        //     through narrowOrderAmbiguity.
+        //   NO_RESULT (no dw.svc.Result at all), HTTP_500 (a bare 500 with no
+        //     recovered Gameball envelope) and TIMEOUT (result.status ===
+        //     'SERVICE_UNAVAILABLE' with an unavailableReason that reads as a
+        //     timeout - see narrowOrderAmbiguity's own UNVERIFIED note on that
+        //     substring check) are all narrowed to AMBIGUOUS.
+        //   SVC_UNAVAILABLE is the one token that stays SERVICE_UNAVAILABLE,
+        //     not AMBIGUOUS, even though arbitration section 4.9's one-line
+        //     summary table lists it alongside the other six under "their
+        //     AMBIGUOUS mapping" - see narrowOrderAmbiguity's own comment for
+        //     why spec 06 section 7.1's detailed, code-level design (S26: a
+        //     platform-side valve - SFCC's rate limiter, an open circuit
+        //     breaker, the service disabled in BM - must halt the run WITHOUT
+        //     burning the order's attempt budget) is followed here instead.
+        //   PAYLOAD_BUILD_FAILED is the one deliberate exception in practice:
+        //     gameballOrderApi.attemptTrack returns disposition PERMANENT
+        //     directly (a hard-coded literal, not a lookup here) when
+        //     orderPayload.build() throws, because no HTTP call was even
+        //     attempted - "may have landed" cannot apply, and probing before
+        //     resend would only waste a call. The row below exists so a
+        //     STORED 'PAYLOAD_BUILD_FAILED' code re-classified on a later run
+        //     (e.g. one written before this comment's reasoning was code, or
+        //     entered by a human) still resolves to a safe, defined
+        //     disposition rather than falling through to the generic
+        //     unknown-code fail-safe.
+        TIMEOUT: { disposition: DISPOSITION.AMBIGUOUS, remediation: '' },
+        HTTP_500: { disposition: DISPOSITION.AMBIGUOUS, remediation: '' },
+        SVC_UNAVAILABLE: { disposition: DISPOSITION.SERVICE_UNAVAILABLE, remediation: '' },
+        PROBE_FAILED: { disposition: DISPOSITION.AMBIGUOUS, remediation: '' },
+        PAYLOAD_BUILD_FAILED: { disposition: DISPOSITION.AMBIGUOUS, remediation: '' },
+        EXCEPTION: { disposition: DISPOSITION.AMBIGUOUS, remediation: '' },
+        NO_RESULT: { disposition: DISPOSITION.AMBIGUOUS, remediation: '' }
+    },
     REFUND: {}
 };
 
