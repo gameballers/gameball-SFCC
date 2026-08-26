@@ -14,6 +14,16 @@ var TRACK_STATE_FAILED = 'FAILED';
 var TRACK_STATE_FAILED_PERMANENT = 'FAILED_PERMANENT';
 var TRACK_STATE_RETRY_EXHAUSTED = 'RETRY_EXHAUSTED';
 
+// Item 07's own state constant, written exactly once (below, on every fresh
+// TRACKED settlement) and never again from this file. Every SUBSEQUENT
+// transition on gbRefundState belongs to refundStateStore.js - this module
+// only ever seeds the field so the refund detector never has to reason about
+// a NULL value on an order tracked before item 07 shipped versus one tracked
+// after (arbitration section 4.3's invariant: this file must NEVER write
+// 'FAILED' onto gbTrackState for a refund-side reason, and symmetrically it
+// never writes anything but NONE onto gbRefundState).
+var REFUND_STATE_NONE = 'NONE';
+
 var DISPOSITION = gameballErrors.DISPOSITION;
 
 // Every classify()/classifyStoredCode() call in this file is scoped to ORDER
@@ -290,7 +300,8 @@ function narrowOrderAmbiguity(result, verdict) {
  * @param {dw.order.Order} order
  * @param {Object} attrs - any of gbTrackState, gbGameballOrderId, gbCustomerId,
  *   gbCustomerIdSource, gbLastError, gbLastErrorCode, gbLastRequestId,
- *   gbRetryAttempts, gbLastAttemptAt, gbNextRetryAt
+ *   gbRetryAttempts, gbLastAttemptAt, gbNextRetryAt, gbTrackedAt,
+ *   gbTrackedTotalPaid, gbTrackedCurrency, gbRefundState
  */
 function persistResult(order, attrs) {
     Transaction.wrap(function () {
@@ -325,6 +336,27 @@ function persistResult(order, attrs) {
         }
         if (attrs.gbNextRetryAt !== undefined) {
             order.custom.gbNextRetryAt = attrs.gbNextRetryAt;
+        }
+        // Item 07's four keys, appended at the end of the same transaction
+        // rather than a second Transaction.wrap (P2) - see arbitration
+        // section 4.3. gbTrackedAt/gbTrackedTotalPaid/gbTrackedCurrency are
+        // the refund detector's only anchor and its only ceiling; both are
+        // written from the EXACT value this call sent (never recomputed),
+        // for the same reason gbGameballOrderId/gbCustomerId above are never
+        // recomputed - an order can be edited after tracking, and a
+        // recomputed figure would silently move the refund ceiling out from
+        // under the cumulative guard in refundGate.js.
+        if (attrs.gbTrackedAt !== undefined) {
+            order.custom.gbTrackedAt = attrs.gbTrackedAt;
+        }
+        if (attrs.gbTrackedTotalPaid !== undefined) {
+            order.custom.gbTrackedTotalPaid = attrs.gbTrackedTotalPaid;
+        }
+        if (attrs.gbTrackedCurrency !== undefined) {
+            order.custom.gbTrackedCurrency = attrs.gbTrackedCurrency;
+        }
+        if (attrs.gbRefundState !== undefined) {
+            order.custom.gbRefundState = attrs.gbRefundState;
         }
     });
 }
@@ -599,7 +631,18 @@ function sendOrder(order) {
                 gbLastRequestId: null,
                 gbNextRetryAt: null,
                 gbLastAttemptAt: now,
-                gbRetryAttempts: priorAttempts + 1
+                gbRetryAttempts: priorAttempts + 1,
+                // Item 07's refund anchor and ceiling, seeded here and only
+                // here (see persistResult's own comment above). totalPaid is
+                // read off outcome.body - the exact figure this call sent,
+                // never recalculated - and currency off the order itself,
+                // which orderPayload.build() already used to build that same
+                // body (order.getCurrencyCode() cannot have changed between
+                // the two calls within one request).
+                gbTrackedAt: now,
+                gbTrackedTotalPaid: outcome.body && outcome.body.totalPaid,
+                gbTrackedCurrency: order.getCurrencyCode(),
+                gbRefundState: REFUND_STATE_NONE
             });
             return;
         }
@@ -623,7 +666,20 @@ function sendOrder(order) {
                 gbLastRequestId: null,
                 gbNextRetryAt: null,
                 gbLastAttemptAt: now,
-                gbRetryAttempts: priorAttempts + 1
+                gbRetryAttempts: priorAttempts + 1,
+                // Also seeded on the ALREADY_APPLIED path (see the SUCCESS
+                // branch above): this order is reaching TRACKED for the
+                // first time here too whenever an earlier attempt's response
+                // never arrived (an ambiguous timeout later confirmed by
+                // 9004) - gbTrackedAt/gbTrackedTotalPaid would otherwise stay
+                // unset forever and the refund detector would never find
+                // this order. outcome.body is the exact payload THIS call
+                // sent, so totalPaid is still the true figure even though
+                // the disposition is a confirmation rather than a fresh 2xx.
+                gbTrackedAt: now,
+                gbTrackedTotalPaid: outcome.body && outcome.body.totalPaid,
+                gbTrackedCurrency: order.getCurrencyCode(),
+                gbRefundState: REFUND_STATE_NONE
             });
             return;
         }

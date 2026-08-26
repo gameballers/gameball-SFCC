@@ -93,4 +93,35 @@
             </run-recurring>
         </triggers>
     </job>
+    <job job-id="Gameball Refund Detector" priority="0">
+        <description>Sends a full Gameball points reversal for orders that were tracked and have since been cancelled or failed, and retries any refund left undelivered by an earlier run or by gameballRefundApi.submitRefund's deferSend path. Catches roughly 10-20% of refund events by count and less by value - see docs/refunds-integration-guide.md. The trigger ships DISABLED and the context site-id below is a placeholder that must be changed before the job is enabled.</description>
+        <parameters/>
+        <flow>
+            <context site-id="RefArch"/>
+            <step step-id="GB-RefundDetect" type="custom.Gameball.RefundDetect" enforce-restart="false">
+                <description/>
+                <parameters/>
+                <rules/>
+            </step>
+        </flow>
+        <rules/>
+        <triggers>
+            <run-recurring enabled="false">
+                <recurrence>
+                    <date-from>2026-01-01Z</date-from>
+                    <start-time>00:40:00.000Z</start-time>
+                    <interval>1h</interval>
+                    <day-of-week>
+                        <weekday>Monday</weekday>
+                        <weekday>Tuesday</weekday>
+                        <weekday>Wednesday</weekday>
+                        <weekday>Thursday</weekday>
+                        <weekday>Friday</weekday>
+                        <weekday>Saturday</weekday>
+                        <weekday>Sunday</weekday>
+                    </day-of-week>
+                </recurrence>
+            </run-recurring>
+        </triggers>
+    </job>
 </jobs>

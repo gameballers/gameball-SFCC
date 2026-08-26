@@ -227,6 +227,47 @@
                 <externally-managed-flag>false</externally-managed-flag>
                 <default-value>true</default-value>
             </attribute-definition>
+            <!-- item 07 -->
+            <attribute-definition attribute-id="gameballEnableRefunds">
+                <display-name xml:lang="x-default">Enable Gameball Refunds</display-name>
+                <description xml:lang="x-default">Master switch for sending refunds and cancellations to Gameball. Off by default. IMPORTANT - read before enabling: the automatic path catches roughly 10-20% of refund events by count and less by value (full pre-shipment cancellations that flip the order status), and 0% of post-shipment returns, partial refunds, appeasements, shipping-only or tax-only refunds and chargebacks, and approximately 0% at any merchant whose refunds are issued by an external OMS or from the payment provider's own dashboard. Everything beyond that must be pushed in by your own code calling gameballRefundApi.submitRefund(). See docs/refunds-integration-guide.md.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>false</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRefundDetectCancellations">
+                <display-name xml:lang="x-default">Detect Order Cancellations Automatically</display-name>
+                <description xml:lang="x-default">When on (the default), the Gameball Refund Detector job sends a full points reversal for any order that was successfully tracked to Gameball and has since moved to CANCELLED or FAILED status. Turn this off if an external system already reports those cancellations to Gameball via gameballRefundApi.submitRefund(), otherwise the reversal would be attempted twice (Gameball would answer 9004 and the second attempt would be harmless, but the duplicate call is wasted).</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRefundLookbackDays">
+                <display-name xml:lang="x-default">Refund Detector Lookback (Days)</display-name>
+                <description xml:lang="x-default">How far back the Gameball Refund Detector job scans, in days, measured from gbTrackedAt. This is a full re-scan on every run, not a moving window - an order tracked in January and cancelled in March is only ever found because the scan still reaches back to January. Lowering this below your longest realistic cancellation lag will silently stop catching those cancellations. Raising it increases job run time proportionally.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>90</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRefundOrphanMaxHours">
+                <display-name xml:lang="x-default">Orphan Refund Max Age (Hours)</display-name>
+                <description xml:lang="x-default">How long a refund submitted through gameballRefundApi.submitRefund() for an order that Gameball has not yet been told about is kept waiting before it is abandoned. While waiting, the refund is re-checked on every Refund Detector run and sent as soon as the order reaches TRACKED. After this many hours it is marked SKIPPED and never sent - sending it blind would guarantee a Gameball 9005 "reversed transaction not found".</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>24</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRefundMaxAttempts">
+                <display-name xml:lang="x-default">Refund Max Delivery Attempts</display-name>
+                <description xml:lang="x-default">How many delivery attempts one refund gets before it is marked FAILED and stops being retried. Attempts are made by the hourly Refund Detector job, so six attempts spans roughly six hours at the default schedule. Attempts refused by Salesforce B2C Commerce itself (rate limiter or open circuit breaker) do not count against this budget.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>6</default-value>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballConfigs">
@@ -257,6 +298,15 @@
                 <attribute attribute-id="gameballRetryMaxOrdersPerRun"/>
                 <attribute attribute-id="gameballRetryBackoffMinutes"/>
                 <attribute attribute-id="gameballRetryProbeBeforeResend"/>
+            </attribute-group>
+            <!-- item 07 -->
+            <attribute-group group-id="GameballRefundConfigs">
+                <display-name xml:lang="x-default">Gameball Refunds</display-name>
+                <attribute attribute-id="gameballEnableRefunds"/>
+                <attribute attribute-id="gameballRefundDetectCancellations"/>
+                <attribute attribute-id="gameballRefundLookbackDays"/>
+                <attribute attribute-id="gameballRefundOrphanMaxHours"/>
+                <attribute attribute-id="gameballRefundMaxAttempts"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
@@ -335,6 +385,72 @@
                 <mandatory-flag>false</mandatory-flag>
                 <externally-managed-flag>false</externally-managed-flag>
             </attribute-definition>
+            <!-- item 07 -->
+            <attribute-definition attribute-id="gbTrackedAt">
+                <display-name xml:lang="x-default">Gameball Tracked At</display-name>
+                <description xml:lang="x-default">The moment this order was successfully sent to Gameball. Only set when gbTrackState is TRACKED, and never changed afterwards. This is the anchor the Gameball Refund Detector job scans on, so an order without it is invisible to refund detection forever.</description>
+                <type>datetime</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbTrackedTotalPaid">
+                <display-name xml:lang="x-default">Gameball Tracked Total Paid</display-name>
+                <description xml:lang="x-default">The exact totalPaid figure reported to Gameball for this order. Only set when gbTrackState is TRACKED. This is the ceiling for cumulative refunds: gbRefundedAmount may never exceed it. Stored rather than recomputed because the order can be edited after tracking and a recomputed figure would silently move the ceiling.</description>
+                <type>double</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbTrackedCurrency">
+                <display-name xml:lang="x-default">Gameball Tracked Currency</display-name>
+                <description xml:lang="x-default">The ISO currency code the order was in when it was reported to Gameball. Only set when gbTrackState is TRACKED. Gameball has no currency field on any endpoint - currency is an account-level setting - so this exists purely so a refund can refuse to send when the order currency no longer matches what was tracked, rather than reversing the wrong number of units.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbRefundState">
+                <display-name xml:lang="x-default">Gameball Refund State</display-name>
+                <description xml:lang="x-default">Cumulative refund position for this order: NONE (nothing reversed), PARTIAL (some amount reversed, more possible), FULL (fully reversed - no further refund will ever be sent), MANUAL_REVIEW (a guard refused to guess and no call was made - a human must decide), FAILED (delivery was attempted and permanently rejected by Gameball). Set to NONE at track time. Only the Gameball refund modules write this.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbRefundedAmount">
+                <display-name xml:lang="x-default">Gameball Refunded Amount</display-name>
+                <description xml:lang="x-default">Running total of refund amounts already accepted by Gameball for this order, in the order currency. A full reversal sets this to gbTrackedTotalPaid. Compared against gbTrackedTotalPaid before every partial refund; on breach the refund is routed to MANUAL_REVIEW and never sent, never clamped.</description>
+                <type>double</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>0</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbRefundSeq">
+                <display-name xml:lang="x-default">Gameball Refund Sequence</display-name>
+                <description xml:lang="x-default">Monotonic counter used to mint a unique refundTransactionId for each refund on this order. Incremented at the moment a refund is RECORDED, inside the same transaction that appends it to gbRefundLedger - never at delivery time. Allocating it at delivery would let two refunds recorded before either was sent compute the same id, at which point Gameball answers 9004, the second refund looks like a duplicate of the first, and a real refund is silently never clawed back.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>0</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbRefundLedger">
+                <display-name xml:lang="x-default">Gameball Refund Ledger</display-name>
+                <description xml:lang="x-default">JSON array of every refund recorded against this order, one object per refund, each carrying its own refundTransactionId, transactionTime, amount, state and last Gameball response. This is the idempotency record and the retry queue for this order and nothing else - it is deliberately not a general-purpose event queue. Never edit it by hand: a value that does not parse as JSON puts the order into MANUAL_REVIEW and stops all further refunds on it.</description>
+                <type>text</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbRefundPendingAt">
+                <display-name xml:lang="x-default">Gameball Refund Pending Since</display-name>
+                <description xml:lang="x-default">Set when this order has at least one refund that has been recorded but not yet accepted by Gameball; cleared (set to null) once every recorded refund has reached a terminal state. The Gameball Refund Detector job queries on this to find work left over from an earlier run, so an order with a stuck refund and no value here would never be retried.</description>
+                <type>datetime</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbRefundLastError">
+                <display-name xml:lang="x-default">Gameball Refund Last Error</display-name>
+                <description xml:lang="x-default">The Gameball error code, message and requestId from the most recent failed refund delivery on this order. Deliberately separate from gbLastError, which belongs to order tracking - overloading one field would make an order-tracking failure and a refund failure indistinguishable in Business Manager. Always quote the requestId when contacting Gameball support.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballOrder">
@@ -350,6 +466,20 @@
                 <attribute attribute-id="gbRetryAttempts"/>
                 <attribute attribute-id="gbLastAttemptAt"/>
                 <attribute attribute-id="gbNextRetryAt"/>
+                <!-- appended by item 07 -->
+                <attribute attribute-id="gbTrackedAt"/>
+                <attribute attribute-id="gbTrackedTotalPaid"/>
+                <attribute attribute-id="gbTrackedCurrency"/>
+            </attribute-group>
+            <!-- item 07 -->
+            <attribute-group group-id="GameballOrderRefund">
+                <display-name xml:lang="x-default">Gameball Refunds</display-name>
+                <attribute attribute-id="gbRefundState"/>
+                <attribute attribute-id="gbRefundedAmount"/>
+                <attribute attribute-id="gbRefundSeq"/>
+                <attribute attribute-id="gbRefundLedger"/>
+                <attribute attribute-id="gbRefundPendingAt"/>
+                <attribute attribute-id="gbRefundLastError"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
