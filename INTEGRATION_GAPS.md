@@ -88,3 +88,29 @@ convenience/operability, not functional · Conditional = depends on your rollout
 | Scenario | Impact if left unbuilt | Recommendation | Decision |
 |---|---|---|---|
 | Unit tests, integration tests, CI gate | Zero automated verification of any of the above | Should-have before scaling the team or maintenance load | [skip ] |
+
+---
+
+## Delivered (Keep items completed)
+
+The `Decision` column above is the binding scope record and is deliberately left untouched — no cell
+above this line was edited to produce this section. This is a delivery log: what actually shipped, and
+where to read it. Added once every one of the seven `Keep` items above had merged into `main`, by the
+one PR that could see all seven at once (the documentation item cannot claim its own row in each of
+their PRs, since no earlier PR could see the ones after it).
+
+| Scenario (row above) | PR | Landed in | Mapping rows |
+|---|---|---|---|
+| Widget XSS + `gameballEnabled` preference name mismatch (Known issues) | #5 | `cartridges/int_gameball_sfra/cartridge/templates/default/gameball/widget.isml`, `controllers/Gameball.js`, `static/default/js/gameballWidget.js` | `PAYLOAD_MAPPING.md` §5 |
+| `Account.js` dispatches customer sync through a private extension point (Known issues) | #6 | `cartridges/int_gameball_sfra/cartridge/controllers/Account.js` | n/a (no payload change — dispatch mechanism only) |
+| BM-created / imported / Data-API customers (Customers) | #7 | `cartridges/int_gameball_core/cartridge/scripts/hooks/ocapiShopCustomerHooks.js`, `ocapiDataCustomerHooks.js`, `scripts/customer/customerSyncGate.js`, `scripts/job/customer/deltaCustomers.js` | `PAYLOAD_MAPPING.md` §2 |
+| GDPR / right-to-be-forgotten sync (Customers) | #8 | `cartridges/int_gameball_core/cartridge/scripts/api/gameballPrivacyApi.js`, `scripts/privacy/erasureStore.js`, `scripts/job/erasureDrain.js`, `scripts/hooks/ocapiDataCustomerHooks.js` (`beforeDELETE`) | `PAYLOAD_MAPPING.md` §6 |
+| Guest order tracking (Orders) | #9 | `cartridges/int_gameball_core/cartridge/scripts/order/orderSyncGate.js`, `models/identity/gameballIdentity.js`, `models/payload/orderPayload.js` | `PAYLOAD_MAPPING.md` §3 |
+| Retry for `FAILED` orders (Orders) | #10 | `cartridges/int_gameball_core/cartridge/scripts/job/order/retryFailedOrders.js`, `scripts/api/gameballOrderApi.js` | `PAYLOAD_MAPPING.md` §3, §6 |
+| Refunds — detection, payload, API call (Refunds) | #11 | `cartridges/int_gameball_core/cartridge/models/payload/refundPayload.js`, `scripts/api/gameballRefundApi.js`, `scripts/refund/refundGate.js`, `refundStateStore.js`, `refundDelivery.js`, `scripts/job/refund/detectRefunds.js` | `PAYLOAD_MAPPING.md` §4 |
+
+Everything else above this section — referral capture, signed session token, consent gating, redemption/
+coupon UI, replacement-order handling, reconciliation job, backfill (customer and order), identity
+collision safety, redemption on orders, a general outbound queue, a BM admin dashboard, per-site/
+per-locale config, and a test/CI harness — remains `Skip` and was not built. `PAYLOAD_MAPPING.md` records
+each as a `SKIP-DECISION` row citing the line above, not as an omission with no explanation.
