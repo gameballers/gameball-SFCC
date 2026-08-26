@@ -222,7 +222,73 @@ var SCOPE_TABLES = {
         EXCEPTION: { disposition: DISPOSITION.AMBIGUOUS, remediation: '' },
         NO_RESULT: { disposition: DISPOSITION.AMBIGUOUS, remediation: '' }
     },
-    REFUND: {}
+
+    // The refund item. Ownership is exactly the 9000/9001/9002/9003/9004/
+    // 9005/9007 range plus 3004 - nothing else is overridden here, so a code
+    // this scope does not list (7000, 3000/3001/3003/3016, 1000-8000) falls
+    // straight through to DEFAULT_TABLE above, unchanged. This table maps a
+    // code to a DISPOSITION only. Which ledger entry state a PERMANENT
+    // response settles into - a plain FAILED, or a human-reviewed
+    // MANUAL_REVIEW - is refund-domain business logic and is NOT this file's
+    // job to decide: that branching lives in refundDelivery.js, exactly as
+    // retryFailedOrders.js already branches on ORDER-scope codes without this
+    // file needing an opinion on any job's state machine.
+    REFUND: {
+        // 9000 Transaction non-reversible - PERMANENT here; refundDelivery.js
+        // routes it to MANUAL_REVIEW (an operator judgement call, not a
+        // guaranteed-forever failure like a malformed payload).
+        '9000': { disposition: DISPOSITION.PERMANENT, remediation: '' },
+        // 9001 Transaction already cancelled - the reversal already
+        // happened, which is the desired end state, so this is
+        // ALREADY_APPLIED = success, exactly like the ORDER scope's 9001 row
+        // above (build-plan section 4.4 does not diverge this one).
+        '9001': { disposition: DISPOSITION.ALREADY_APPLIED, remediation: '' },
+        // 9002 Transaction not found - PERMANENT; refundDelivery.js routes it
+        // to MANUAL_REVIEW.
+        '9002': { disposition: DISPOSITION.PERMANENT, remediation: '' },
+        // 9003 Duplicate timestamp exists - the ORDER scope above maps this
+        // to ALREADY_APPLIED (build-plan section 4.4). Refunds deliberately
+        // do NOT inherit that mapping: this cartridge's transactionTime is
+        // persisted at record time and replayed verbatim on every retry
+        // (refundStateStore.js's allocateEntry), so a 9003 on a retry of the
+        // SAME entry is genuinely ambiguous - it could mean this entry's
+        // earlier attempt already landed, or that a DIFFERENT refund on this
+        // account collided on the same timestamp and a real refund is about
+        // to be silently dropped. Treating it as success risks the second;
+        // treating it as dead risks the first. PERMANENT here, routed by
+        // refundDelivery.js to MANUAL_REVIEW rather than FAILED, is the only
+        // reading that cannot silently lose money. Resolved by build-plan
+        // section 7.9 Q2 (transactionTime semantics), not before.
+        '9003': { disposition: DISPOSITION.PERMANENT, remediation: '' },
+        // 9004 Transaction ID already exists - the idempotency signal the
+        // whole refund design leans on (see refundStateStore.js). Treated as
+        // ALREADY_APPLIED = success EXCEPT when the response echoes a
+        // DIFFERENT refundTransactionId than the one this entry actually
+        // sent - that re-assertion needs the entry being delivered, which
+        // this table has no way to see (classify()'s frozen signature is
+        // (result, context) with no entry argument), so it lives in
+        // refundDelivery.js, applied to this row's verdict immediately after
+        // classify() returns.
+        '9004': { disposition: DISPOSITION.ALREADY_APPLIED, remediation: '' },
+        // 9005 Reversed transaction not found - almost always a
+        // reverseTransactionId casing mismatch, or credentials pointing at a
+        // different Gameball workspace (test key vs live key) than the one
+        // this order was originally tracked to. PERMANENT, and
+        // refundDelivery.js alerts on it and settles it straight to FAILED
+        // rather than MANUAL_REVIEW - there is nothing for a human to decide
+        // between, the id is simply wrong and will never become findable.
+        '9005': { disposition: DISPOSITION.PERMANENT, remediation: 'reversed transaction not found - almost always a reverseTransactionId casing mismatch, or credentials pointing at a different Gameball workspace than the one this order was tracked to' },
+        // 9007 Invalid transaction time - PERMANENT; refundDelivery.js routes
+        // it to MANUAL_REVIEW. This cartridge's transactionTime is stamped
+        // once and replayed, so this means Gameball rejected the value
+        // itself - likely build-plan section 7.9 Q2 (original-transaction
+        // time vs refund-moment semantics) resolving against the assumption
+        // this design makes.
+        '9007': { disposition: DISPOSITION.PERMANENT, remediation: '' },
+        // 3004 Operation unachievable - PERMANENT; refundDelivery.js routes
+        // it to MANUAL_REVIEW.
+        '3004': { disposition: DISPOSITION.PERMANENT, remediation: '' }
+    }
 };
 
 // SFCC's own transport verdict, read off dw.svc.Result#status when the call

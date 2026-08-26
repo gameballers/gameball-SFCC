@@ -46,6 +46,23 @@ var TRACK_STATE_TRACKED = 'TRACKED';
 var TRACK_STATE_RETRY_EXHAUSTED = 'RETRY_EXHAUSTED';
 var TRACK_STATE_FAILED_PERMANENT = 'FAILED_PERMANENT';
 
+// Item 07's refund-anchor seed, mirrored from gameballOrderApi.js's own
+// REFUND_STATE_NONE (same value, re-declared rather than imported - that
+// constant is private to gameballOrderApi.js and a fifth export for one
+// string literal is a worse trade than the duplicate, matching this file's
+// existing resolveAttemptIdentity precedent). Written on every TRACKED
+// settlement below for the same reason gameballOrderApi.js's sendOrder
+// writes it: an order that reaches TRACKED without gbTrackedAt/
+// gbTrackedTotalPaid/gbTrackedCurrency/gbRefundState is permanently invisible
+// to the Gameball Refund Detector job, which anchors its whole query on
+// gbTrackedAt. This job settles TRACKED independently of sendOrder (probe
+// confirmation, a fresh resend, or an ALREADY_APPLIED confirmation) and must
+// seed the same four keys every time it does, or every order this job
+// recovers - which is the common case a transient failure exists to be
+// recovered by, not a rare corner - would silently never be scanned for a
+// later cancellation/refund.
+var REFUND_STATE_NONE = 'NONE';
+
 var STEP_NAME = 'retryFailedOrders~execute';
 
 // Every gameballErrors call in this file is scoped to ORDER (arbitration
@@ -62,6 +79,7 @@ var DISPOSITION = null;
 var pacer = null;
 var orderSyncGate = null;
 var gameballIdentity = null;
+var orderPayload = null;
 
 // Per-run configuration, re-read by readConfig() at the top of every run
 // (J7) - never assumed to be unchanged between runs in the same JVM.
@@ -210,6 +228,46 @@ function resolveAttemptIdentity(order) {
     }
 
     return gameballIdentity.getOrderCustomerId(order);
+}
+
+/**
+ * Best-effort totalPaid for seeding item 07's refund-anchor
+ * (gbTrackedTotalPaid) when settling TRACKED via the probe-confirmation path,
+ * where - unlike the fresh-SUCCESS and ALREADY_APPLIED branches below - there
+ * is no outcome.body to read the actually-sent figure from: probeOrderTracked
+ * only ever issues a GET, never a POST, so nothing was ever built or sent by
+ * THIS attempt. The order that succeeded was an earlier, ambiguous attempt
+ * whose own response never arrived, and its exact sent figure is gone.
+ *
+ * Recomputes via orderPayload.build() - the SAME formula attemptTrack() uses
+ * to build the body it POSTs - rather than leaving the ceiling unset
+ * indefinitely. This is not a departure from "never recomputed" (persistResult's
+ * own comment, and gameballOrderApi.js's sendOrder/attemptTrack): that rule
+ * guards against moving the ceiling out from under an ALREADY-tracked order
+ * after it may have been edited; here the order is being tracked for the
+ * first time in this call, so "recompute now" and "read the value the
+ * original send used" agree unless the order changed in the narrow window
+ * between the two attempts - the same imprecision this job's own
+ * ALREADY_APPLIED branch already accepts (its outcome.body.totalPaid is also
+ * a fresh build, not the original attempt's literal bytes; see that branch's
+ * comment).
+ *
+ * A build() failure is caught and returns undefined so the caller leaves
+ * gbTrackedTotalPaid untouched rather than throwing out of a TRACKED
+ * settlement that must still complete: refundGate's own no_tracked_total
+ * guard then routes any PARTIAL refund on this order to MANUAL_REVIEW rather
+ * than guessing, exactly the documented fallback for an order with no known
+ * total (spec section 8, "order tracked before this item shipped"). A FULL
+ * reversal needs no ceiling and is unaffected.
+ * @param {dw.order.Order} order
+ * @returns {number|undefined}
+ */
+function recomputeTotalPaidForAnchor(order) {
+    try {
+        return orderPayload.build(order).totalPaid;
+    } catch (e) {
+        return undefined;
+    }
 }
 
 /**
@@ -428,7 +486,21 @@ function processOne(order) {
                     gbLastRequestId: null,
                     gbNextRetryAt: null,
                     gbLastAttemptAt: new Date(),
-                    gbRetryAttempts: attempts + 1
+                    gbRetryAttempts: attempts + 1,
+                    // Item 07's refund anchor and ceiling - this order is
+                    // reaching TRACKED for the first time right here (an
+                    // earlier ambiguous attempt's response never arrived, and
+                    // the probe just confirmed Gameball holds it anyway), so
+                    // gbTrackedAt/gbTrackedTotalPaid/gbTrackedCurrency/
+                    // gbRefundState must be seeded now or this order is
+                    // permanently invisible to the Refund Detector job (see
+                    // this file's REFUND_STATE_NONE comment). totalPaid has
+                    // no outcome.body to read here - see
+                    // recomputeTotalPaidForAnchor's own JSDoc for why.
+                    gbTrackedAt: new Date(),
+                    gbTrackedTotalPaid: recomputeTotalPaidForAnchor(order),
+                    gbTrackedCurrency: order.getCurrencyCode(),
+                    gbRefundState: REFUND_STATE_NONE
                 });
                 probeSettledCount++;
                 return;
@@ -474,7 +546,19 @@ function processOne(order) {
                 gbLastRequestId: null,
                 gbNextRetryAt: null,
                 gbLastAttemptAt: new Date(),
-                gbRetryAttempts: attempts + 1
+                gbRetryAttempts: attempts + 1,
+                // Item 07's refund anchor and ceiling, seeded here for the
+                // same reason gameballOrderApi.js's sendOrder seeds it on its
+                // own SUCCESS branch - this job's own TRACKED settlement was
+                // missing it entirely (see REFUND_STATE_NONE's comment
+                // above). totalPaid read off outcome.body - the exact figure
+                // THIS call sent, never recomputed - and currency off the
+                // order itself, exactly mirroring sendOrder's own SUCCESS
+                // branch.
+                gbTrackedAt: new Date(),
+                gbTrackedTotalPaid: outcome.body && outcome.body.totalPaid,
+                gbTrackedCurrency: order.getCurrencyCode(),
+                gbRefundState: REFUND_STATE_NONE
             });
             trackedCount++;
             return;
@@ -500,7 +584,19 @@ function processOne(order) {
                 gbLastRequestId: null,
                 gbNextRetryAt: null,
                 gbLastAttemptAt: new Date(),
-                gbRetryAttempts: attempts + 1
+                gbRetryAttempts: attempts + 1,
+                // Also seeded on the ALREADY_APPLIED path (see the SUCCESS
+                // branch above and REFUND_STATE_NONE's comment): this order
+                // is reaching TRACKED for the first time here too whenever an
+                // earlier attempt's own response never arrived. outcome.body
+                // is the exact payload THIS call sent, so totalPaid is still
+                // the true current figure even though the disposition is a
+                // confirmation rather than a fresh 2xx (mirrors
+                // gameballOrderApi.js's sendOrder ALREADY_APPLIED branch).
+                gbTrackedAt: new Date(),
+                gbTrackedTotalPaid: outcome.body && outcome.body.totalPaid,
+                gbTrackedCurrency: order.getCurrencyCode(),
+                gbRefundState: REFUND_STATE_NONE
             });
             alreadyAppliedCount++;
             return;
@@ -678,6 +774,11 @@ function execute(parameters, stepExecution) { // eslint-disable-line no-unused-v
         pacer = require('*/cartridge/scripts/job/gameballJobPacer');
         orderSyncGate = require('*/cartridge/scripts/order/orderSyncGate');
         gameballIdentity = require('*/cartridge/models/identity/gameballIdentity');
+        // Pure payload builder only (no HTTP) - required here solely so the
+        // probe-settled branch below can recompute totalPaid for the refund
+        // anchor without a second POST. See recomputeTotalPaidForAnchor's own
+        // JSDoc for why that branch has no outcome.body to read it from.
+        orderPayload = require('*/cartridge/models/payload/orderPayload');
 
         // Guard 1, first thing that runs. A sandbox data refresh copies
         // production orders; without this guard a refreshed sandbox would
