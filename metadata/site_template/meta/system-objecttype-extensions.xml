@@ -140,6 +140,44 @@
                 <externally-managed-flag>false</externally-managed-flag>
                 <default-value>7</default-value>
             </attribute-definition>
+            <!-- item 05 -->
+            <attribute-definition attribute-id="gameballTrackGuestOrders">
+                <display-name xml:lang="x-default">Track Guest Orders in Gameball</display-name>
+                <description xml:lang="x-default">Master switch for guest order tracking. OFF by default: while it is off, any order placed without a registered customer profile (guest checkout, POS, imported and OMS-created orders) is recorded as gbTrackState=SKIPPED and earns no points, which is the behaviour of every release before this one. Turning it on makes Gameball auto-create a customer profile for each guest identity produced by gameballGuestOrderMode. Read gameballGuestOrderMode's description before enabling: guest identities cannot be re-keyed or merged afterwards by this cartridge.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>false</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballGuestOrderMode">
+                <display-name xml:lang="x-default">Guest Order Identity Mode</display-name>
+                <description xml:lang="x-default">How a Gameball customerId is derived for an order that has no registered customer profile. Only consulted when gameballTrackGuestOrders is on. PER_ORDER (default) mints "gb_guest_" + the SFCC order number, so every guest order becomes its own Gameball profile - deterministic, collision-free, and safe to retry, but a repeat guest never accumulates a balance. PER_EMAIL mints "gb_guest_" + the SHA-256 hex of the lower-cased, trimmed customer email joined to the site id, so the same email on the same site always resolves to one profile that accumulates points; when the order carries no usable email (POS, imported and OMS-created orders) it falls back to PER_ORDER and never derives an id from an empty value. SKIP tracks nothing, leaving guest orders SKIPPED. CHANGING THIS VALUE DOES NOT MIGRATE ALREADY-TRACKED ORDERS: their stored gbCustomerId is never rewritten, so points already earned under the old scheme stay where they are.</description>
+                <type>enum-of-string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <value-definitions>
+                    <value-definition default="true">
+                        <display xml:lang="x-default">PER_ORDER</display>
+                        <value>PER_ORDER</value>
+                    </value-definition>
+                    <value-definition>
+                        <display xml:lang="x-default">PER_EMAIL</display>
+                        <value>PER_EMAIL</value>
+                    </value-definition>
+                    <value-definition>
+                        <display xml:lang="x-default">SKIP</display>
+                        <value>SKIP</value>
+                    </value-definition>
+                </value-definitions>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballLinkGuestOrdersByLogin">
+                <display-name xml:lang="x-default">Link Guest Orders to a Matching Customer Login</display-name>
+                <description xml:lang="x-default">When on (the default), an order placed without logging in is first checked against CustomerMgr.getCustomerByLogin(order email); if a customer is found the order is attributed to that registered profile with guest=false, so a shopper who forgot to sign in still earns on their real balance. CAVEAT: getCustomerByLogin matches on the LOGIN, not on the email address. On a storefront where login and email are the same string (the SFRA default) this works; on a storefront using a separate username it silently never matches and every such order falls through to gameballGuestOrderMode. Turn this off if guest checkout must never touch a registered balance. Only consulted when gameballTrackGuestOrders is on.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballConfigs">
@@ -160,6 +198,9 @@
                 <attribute attribute-id="gameballErasureEnabled"/>
                 <attribute attribute-id="gameballErasureMaxAttempts"/>
                 <attribute attribute-id="gameballErasureSuccessRetentionDays"/>
+                <attribute attribute-id="gameballTrackGuestOrders"/>
+                <attribute attribute-id="gameballGuestOrderMode"/>
+                <attribute attribute-id="gameballLinkGuestOrdersByLogin"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
@@ -167,7 +208,7 @@
         <custom-attribute-definitions>
             <attribute-definition attribute-id="gbTrackState">
                 <display-name xml:lang="x-default">Gameball Track State</display-name>
-                <description xml:lang="x-default">Outcome of syncing this order to Gameball: TRACKED (successfully sent), SKIPPED (excluded by a gating rule - integration off, guest order, replacement order, or cancelled/failed status), or FAILED (the API call errored or returned a non-ok result).</description>
+                <description xml:lang="x-default">Outcome of syncing this order to Gameball: TRACKED (successfully sent), SKIPPED (excluded by a gating rule - integration off, replacement order, cancelled/failed status, or a guest order while gameballTrackGuestOrders is off or gameballGuestOrderMode is SKIP), or FAILED (the API call errored or returned a non-ok result).</description>
                 <type>string</type>
                 <mandatory-flag>false</mandatory-flag>
                 <externally-managed-flag>false</externally-managed-flag>
@@ -193,6 +234,14 @@
                 <mandatory-flag>false</mandatory-flag>
                 <externally-managed-flag>false</externally-managed-flag>
             </attribute-definition>
+            <!-- item 05 -->
+            <attribute-definition attribute-id="gbCustomerIdSource">
+                <display-name xml:lang="x-default">Gameball Customer Id Source</display-name>
+                <description xml:lang="x-default">Which rung of the identity ladder produced the gbCustomerId sent for this order: PROFILE (the order's own registered customer profile), LOGIN_MATCH (a guest order whose email resolved to an existing customer login), GUEST_PER_ORDER (a derived id from the order number) or GUEST_PER_EMAIL (a derived id from the hashed customer email). Only set when gbTrackState is TRACKED. Written for support: a GUEST_PER_ORDER value while gameballGuestOrderMode is PER_EMAIL means the order had no usable email and the empty-identifier fallback fired.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballOrder">
@@ -201,6 +250,7 @@
                 <attribute attribute-id="gbGameballOrderId"/>
                 <attribute attribute-id="gbCustomerId"/>
                 <attribute attribute-id="gbLastError"/>
+                <attribute attribute-id="gbCustomerIdSource"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
