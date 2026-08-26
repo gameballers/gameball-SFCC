@@ -229,7 +229,7 @@ function processOneCancellation(order) {
             return;
         }
 
-        var status = order.getStatus();
+        var status = order.getStatus().value;
         if (status !== Order.ORDER_STATUS_CANCELLED && status !== Order.ORDER_STATUS_FAILED) {
             return;
         }
