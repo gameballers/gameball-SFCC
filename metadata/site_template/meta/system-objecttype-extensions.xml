@@ -18,12 +18,31 @@
                 <externally-managed-flag>false</externally-managed-flag>
                 <default-value>true</default-value>
             </attribute-definition>
+            <!-- item 02 -->
+            <attribute-definition attribute-id="gameballInfoLogEnabled">
+                <display-name xml:lang="x-default">Gameball Info Logging</display-name>
+                <description xml:lang="x-default">Writes one INFO line to the custom Gameball log for every customer upsert the storefront sends or deliberately skips. This is the only way an operator can confirm that exactly one Gameball customer upsert is sent per registration and per profile save - count the "upsert sent" lines sharing one sfccRequestId. Turning it off silences the success lines, the skip lines AND the transient-failure warnings (rate limit, service timeout, Gameball-side 5xx), which means a Gameball outage stops appearing in the log at all; only permanent errors are written regardless of this setting. Leave it on unless log volume forces otherwise.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballDebugLogEnabled">
+                <display-name xml:lang="x-default">Gameball Debug Logging</display-name>
+                <description xml:lang="x-default">Writes DEBUG lines for the high-volume, uninteresting Gameball skip paths - chiefly "integration disabled", which would otherwise fire on every profile save on a site where Gameball is switched off. Off by default; switch it on only while diagnosing why an expected sync did not happen.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>false</default-value>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballConfigs">
                 <display-name xml:lang="x-default">Gameball Settings</display-name>
                 <attribute attribute-id="gameballEnabled"/>
                 <attribute attribute-id="gameballExcludeGiftCertificateTender"/>
+                <attribute attribute-id="gameballInfoLogEnabled"/>
+                <attribute attribute-id="gameballDebugLogEnabled"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
