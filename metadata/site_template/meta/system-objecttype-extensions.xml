@@ -35,6 +35,86 @@
                 <externally-managed-flag>false</externally-managed-flag>
                 <default-value>false</default-value>
             </attribute-definition>
+            <!-- item 03 -->
+            <attribute-definition attribute-id="gameballSyncOcapiShopCustomers">
+                <display-name xml:lang="x-default">Sync OCAPI/SCAPI Shop API Customers</display-name>
+                <description xml:lang="x-default">When enabled, a customer registered or edited through the OCAPI/SCAPI Shop API (a headless storefront) is synced to Gameball immediately, exactly as a storefront registration is. Requires Administration &gt; Global Preferences &gt; Feature Switches &gt; API hook execution to be turned on, which is off by default and cannot be detected from script - if that switch is off, this preference has no effect and the Gameball Customer Delta job is the only coverage for these customers.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballSyncDataApiCustomers">
+                <display-name xml:lang="x-default">Sync OCAPI/SCAPI Data API Customers</display-name>
+                <description xml:lang="x-default">When enabled, a customer created, replaced or patched through the OCAPI/SCAPI Data API (typically a CRM, OMS or middleware) is synced to Gameball inside the same request. Leave disabled for high-volume bulk upserts: the Data API hook runs inside the platform's own database transaction, so each record would hold a transaction open for the duration of a synchronous Gameball call. Coverage is not lost by leaving this off - the Gameball Customer Delta job picks those customers up within its schedule interval without holding the Data API request open.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>false</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballCustomerRequireEmail">
+                <display-name xml:lang="x-default">Require an Email Before Syncing a Customer</display-name>
+                <description xml:lang="x-default">When enabled, a customer profile with no email address is skipped by every Gameball customer sync path instead of being sent, and is recorded as gbSyncState SKIPPED. Turn this on if your Gameball workspace uses email-based channel merging: a profile with no email cannot merge and becomes a permanently orphaned Gameball record. This is a data-quality gate, not a consent gate. Default off, which preserves the previous behaviour exactly.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>false</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballCustomerDeltaStrategy">
+                <display-name xml:lang="x-default">Customer Delta Job Strategy</display-name>
+                <description xml:lang="x-default">How the Gameball Customer Delta job finds changed profiles. LAST_MODIFIED (default) queries profiles by their last-modified date and is the cheap path. PAGED_CUSTOMER_NO pages the whole customer base in customer-number order and filters by last-modified date in code; use it only if LAST_MODIFIED fails on your instance because lastModified is not a queryable Profile attribute, which the job reports by ending with an error naming this preference. The job never switches strategy on its own.</description>
+                <type>enum-of-string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <value-definitions>
+                    <value-definition default="true">
+                        <value>LAST_MODIFIED</value>
+                    </value-definition>
+                    <value-definition>
+                        <value>PAGED_CUSTOMER_NO</value>
+                    </value-definition>
+                </value-definitions>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballCustomerDeltaLookbackHours">
+                <display-name xml:lang="x-default">Customer Delta Lookback (Hours)</display-name>
+                <description xml:lang="x-default">How far back the Gameball Customer Delta job looks for modified profiles on each run. Must comfortably exceed the job's schedule interval so a skipped or failed run is recovered by the next one, and must exceed the customer search index lag (budget 1 to 1.5 hours). In PAGED_CUSTOMER_NO strategy it must also exceed the time one full pass over the customer base takes. Profiles that fall out of this window stop being retried, which is what bounds a permanently failing profile.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>48</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballCustomerDeltaMaxCallsPerRun">
+                <display-name xml:lang="x-default">Customer Delta Max Gameball Calls Per Run</display-name>
+                <description xml:lang="x-default">Upper bound on the number of Gameball customer upserts the delta job issues in a single run. Gameball caps customer POSTs at 30 per second and 360 per rolling 30 seconds account-wide, shared with every other site and every storefront call, so raising this materially requires a matching schedule change. The job ends cleanly with OK when the budget is spent; unsent profiles are picked up on the next run. A bulk customer import is a backfill in disguise - at the default of 500 per hourly run it drains at 12,000 profiles a day.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>500</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballCustomerDeltaMaxProfilesPerRun">
+                <display-name xml:lang="x-default">Customer Delta Max Profiles Read Per Run</display-name>
+                <description xml:lang="x-default">Upper bound on the number of profiles the delta job reads in a single run. Only used by the PAGED_CUSTOMER_NO strategy, where it is the termination guarantee and sets how fast one full pass over the customer base completes; the LAST_MODIFIED strategy is bounded by its own query instead. Reading is cheap - this is not a Gameball call budget, and lowering it does not reduce API traffic.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>20000</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballAllowNonProductionSync">
+                <display-name xml:lang="x-default">Allow Gameball Jobs on Non-Production Instances</display-name>
+                <description xml:lang="x-default">Every Gameball job refuses to run on a Sandbox, Development or Staging instance unless this is explicitly enabled, and reports that refusal as a successful run. A sandbox data refresh copies production customer and order data; without this guard a refreshed sandbox would start pushing production records into the configured Gameball workspace unattended within one job interval. Enable it only on an instance pointed at a Gameball test workspace.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>false</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballMaxRequestsPerSecond">
+                <display-name xml:lang="x-default">Gameball Max Requests Per Second</display-name>
+                <description xml:lang="x-default">Soft ceiling every Gameball job paces itself against. Gameball's published limits are 30 requests per second and 360 per rolling 30 seconds, and they are ACCOUNT-scoped: they are shared by every job, every site and every storefront call against one Gameball workspace. A multi-site merchant therefore DIVIDES this value across the sites sharing a workspace - it is never multiplied. SFCC has no sleep, so the only throttle available to a job is to stop issuing calls, which is what happens when this ceiling is reached; the run ends cleanly and the next one resumes.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>10</default-value>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballConfigs">
@@ -43,6 +123,15 @@
                 <attribute attribute-id="gameballExcludeGiftCertificateTender"/>
                 <attribute attribute-id="gameballInfoLogEnabled"/>
                 <attribute attribute-id="gameballDebugLogEnabled"/>
+                <attribute attribute-id="gameballSyncOcapiShopCustomers"/>
+                <attribute attribute-id="gameballSyncDataApiCustomers"/>
+                <attribute attribute-id="gameballCustomerRequireEmail"/>
+                <attribute attribute-id="gameballCustomerDeltaStrategy"/>
+                <attribute attribute-id="gameballCustomerDeltaLookbackHours"/>
+                <attribute attribute-id="gameballCustomerDeltaMaxCallsPerRun"/>
+                <attribute attribute-id="gameballCustomerDeltaMaxProfilesPerRun"/>
+                <attribute attribute-id="gameballAllowNonProductionSync"/>
+                <attribute attribute-id="gameballMaxRequestsPerSecond"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
@@ -84,6 +173,64 @@
                 <attribute attribute-id="gbGameballOrderId"/>
                 <attribute attribute-id="gbCustomerId"/>
                 <attribute attribute-id="gbLastError"/>
+            </attribute-group>
+        </group-definitions>
+    </type-extension>
+    <type-extension type-id="Profile">
+        <custom-attribute-definitions>
+            <!-- item 03 -->
+            <attribute-definition attribute-id="gbSyncState">
+                <display-name xml:lang="x-default">Gameball Sync State</display-name>
+                <description xml:lang="x-default">Outcome of the most recent Gameball customer upsert attempt for this profile. SYNCED - Gameball accepted the payload. FAILED - the call errored, was rejected, or was rate-limited; it is retried by the Gameball Customer Delta job for as long as the profile stays inside that job's lookback window, unless the rejection was permanent. SKIPPED - a gating rule stopped the call before it was made: this entry point is switched off, the profile has no customer number, or it has no email while Require an Email Before Syncing a Customer is on. A profile that already reads SYNCED is never relabelled SKIPPED just because an entry point is switched off, because that says nothing about whether the customer reached Gameball.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbSyncHash">
+                <display-name xml:lang="x-default">Gameball Sync Payload Hash</display-name>
+                <description xml:lang="x-default">Versioned hash of the exact payload body Gameball last ACCEPTED for this profile, or last permanently rejected. Written only after a successful or permanently-rejected call, never after a retryable failure. A sync path that recomputes this hash and finds it unchanged makes no API call at all - this is the only thing stopping the hourly delta job from re-POSTing every unchanged profile in its window. Clearing this value forces a resync on the next sync of this profile, and is the supported way to push a stuck profile through again.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbLastSyncAt">
+                <display-name xml:lang="x-default">Gameball Last Sync Attempt</display-name>
+                <description xml:lang="x-default">When a Gameball customer upsert was last ATTEMPTED for this profile, successful or not. Read gbSyncState to know the outcome. Deliberately not written when a profile was found unchanged and no call was made: writing it there would bump the profile's last-modified date on every sweep and make the sweep permanently feed itself. For the same reason it is not refreshed while an identical failure repeats from the same entry point, so on a profile stuck in FAILED it reads as when that failure was first recorded - refreshing it every attempt would hold the profile inside the delta job's lookback window forever and it would never stop being retried.</description>
+                <type>datetime</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbGameballId">
+                <display-name xml:lang="x-default">Gameball Id</display-name>
+                <description xml:lang="x-default">The gameballId returned by Gameball's integrations/customers 200 response. A change in this value is the only local signal that Gameball merged this profile into another one through channel merging.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbSyncSource">
+                <display-name xml:lang="x-default">Gameball Sync Source</display-name>
+                <description xml:lang="x-default">Which entry point performed the most recent sync attempt: ACCOUNT_SUBMIT_REGISTRATION, ACCOUNT_SAVE_PROFILE, ORDER_CREATE_ACCOUNT, OCAPI_SHOP_POST, OCAPI_SHOP_PATCH, OCAPI_DATA_POST, OCAPI_DATA_PUT, OCAPI_DATA_PATCH, DELTA_JOB, or MERCHANT_API (merchant code calling the Gameball customer API directly). There is no Business Manager dashboard in this iteration, so this attribute is how support answers "how did this customer get to Gameball".</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbLastSyncError">
+                <display-name xml:lang="x-default">Gameball Last Sync Error</display-name>
+                <description xml:lang="x-default">Compact summary of the most recent failed Gameball customer upsert, as httpStatus|gameballCode|requestId|message. Only set when gbSyncState is FAILED, and cleared on the next successful sync. requestId is the token Gameball support asks for, which is why it is a field of its own rather than buried in the message. The payload is never stored here.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+        </custom-attribute-definitions>
+        <group-definitions>
+            <attribute-group group-id="GameballCustomer">
+                <display-name xml:lang="x-default">Gameball</display-name>
+                <attribute attribute-id="gbSyncState"/>
+                <attribute attribute-id="gbSyncHash"/>
+                <attribute attribute-id="gbLastSyncAt"/>
+                <attribute attribute-id="gbGameballId"/>
+                <attribute attribute-id="gbSyncSource"/>
+                <attribute attribute-id="gbLastSyncError"/>
             </attribute-group>
         </group-definitions>
     </type-extension>

@@ -1,0 +1,26 @@
+{
+    "step-types": {
+        "script-module-step": [
+            {
+                "@type-id": "custom.Gameball.CustomerDelta",
+                "@supports-parallel-execution": "false",
+                "@supports-site-context": "true",
+                "@supports-organization-context": "false",
+                "description": "Sweeps customer profiles modified since the last Gameball sync and upserts the changed ones to Gameball. Covers the entry points SFCC gives no hook for: Business Manager profile edits and customer import jobs. Also retries any inline sync that previously failed.",
+                "module": "int_gameball_core/cartridge/scripts/job/customer/deltaCustomers.js",
+                "function": "execute",
+                "transactional": "false",
+                "timeout-in-seconds": "3600",
+                "parameters": {
+                    "parameter": []
+                },
+                "status-codes": {
+                    "status": [
+                        { "@code": "ERROR", "description": "Used when the step failed with an error." },
+                        { "@code": "OK", "description": "Used when the step finished successfully." }
+                    ]
+                }
+            }
+        ]
+    }
+}

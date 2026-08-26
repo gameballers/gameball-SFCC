@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata xmlns="http://www.demandware.com/xml/impex/metadata/2006-10-31">
+    <!-- item 03 -->
+    <custom-type type-id="GameballJobState">
+        <display-name xml:lang="x-default">Gameball Job State</display-name>
+        <description xml:lang="x-default">Singleton row (key '1') holding cursors and run markers for the Gameball jobs. Created automatically on a job's first run - do not create it by hand. Contains no personal data and no secrets, and deliberately carries no retention-days: it is a cursor, not a queue, and losing it would restart every sweep from its install floor.</description>
+        <staging-mode>no-staging</staging-mode>
+        <storage-scope>site</storage-scope>
+        <key-definition attribute-id="gbId">
+            <display-name xml:lang="x-default">Id</display-name>
+            <description xml:lang="x-default">Always the literal '1'. This object type holds exactly one row per site; every Gameball job reads and writes that same row.</description>
+            <type>string</type>
+            <min-length>1</min-length>
+        </key-definition>
+        <attribute-definitions>
+            <attribute-definition attribute-id="gbCustomerDeltaFloor">
+                <display-name xml:lang="x-default">Customer Delta Install Floor</display-name>
+                <description xml:lang="x-default">The install floor for the Gameball Customer Delta job. Seeded automatically to the current time on the job's very first run, during which the job syncs nothing. Profiles last modified before this instant are never swept, which is what keeps the delta job from degenerating into a full backfill of the existing customer base. Backdate it manually only if you deliberately want a bounded catch-up - the per-run call budget still throttles it.</description>
+                <type>datetime</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbCustomerDeltaCursor">
+                <display-name xml:lang="x-default">Customer Delta Resume Cursor</display-name>
+                <description xml:lang="x-default">Resume cursor for the PAGED_CUSTOMER_NO strategy only: the last customerNo the job read. The job writes it after every page and again when a run stops part-way through one, so a run that spends its call budget mid-page does not repeat that page on the next run. The literal 0, which is also what an empty value is read as, means start from the beginning of the customer base; the job writes 0 back when it completes a full pass. Unused by the LAST_MODIFIED strategy.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbCustomerDeltaLastRunAt">
+                <display-name xml:lang="x-default">Customer Delta Last Run At</display-name>
+                <description xml:lang="x-default">When the Gameball Customer Delta job last finished. Recorded for operator visibility ONLY - it is never used as a query predicate, because the customer search index is asynchronous and a moving watermark used as a filter loses every profile the index had not yet caught up on.</description>
+                <type>datetime</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbCustomerDeltaLastRunSummary">
+                <display-name xml:lang="x-default">Customer Delta Last Run Summary</display-name>
+                <description xml:lang="x-default">Counters from the last delta run: profiles read, skipped as unchanged, sent, failed (a rejected call, a call that never arrived, or an exception - a run whose every call threw reads failed=N, never skipped=N), skipped by a gating rule, deferred by the rate governor, Gameball calls issued, elapsed milliseconds, and why the run ended (exhausted, call_budget, read_budget, wall_clock, rate_limited, config_error, cursor_stalled, wrapped). Mirrors what the run wrote to the Gameball log.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+        </attribute-definitions>
+        <group-definitions>
+            <attribute-group group-id="GameballJobs">
+                <display-name xml:lang="x-default">Gameball Jobs</display-name>
+                <attribute attribute-id="gbId"/>
+                <attribute attribute-id="gbCustomerDeltaFloor"/>
+                <attribute attribute-id="gbCustomerDeltaCursor"/>
+                <attribute attribute-id="gbCustomerDeltaLastRunAt"/>
+                <attribute attribute-id="gbCustomerDeltaLastRunSummary"/>
+            </attribute-group>
+        </group-definitions>
+    </custom-type>
+</metadata>
