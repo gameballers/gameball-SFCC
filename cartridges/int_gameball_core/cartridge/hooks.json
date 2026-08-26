@@ -2,11 +2,11 @@
     "hooks": [
         {
             "name": "app.customer.registered",
-            "script": "./cartridge/scripts/hooks/customerHooks.js"
+            "script": "./scripts/hooks/customerHooks.js"
         },
         {
             "name": "app.customer.updated",
-            "script": "./cartridge/scripts/hooks/customerHooks.js"
+            "script": "./scripts/hooks/customerHooks.js"
         }
     ]
 }

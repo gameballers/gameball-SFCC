@@ -10,7 +10,7 @@
 function build(profile) {
     var displayName = ((profile.firstName || '') + ' ' + (profile.lastName || '')).trim();
 
-    return {
+    var payload = {
         customerId: profile.customerNo,
         email: profile.email || undefined,
         customerAttributes: {
@@ -20,6 +20,21 @@ function build(profile) {
             email: profile.email || ''
         }
     };
+
+    var phone = profile.phoneMobile || profile.phoneHome || profile.phoneBusiness;
+    if (phone) {
+        payload.mobile = phone;
+    }
+
+    if (profile.birthday) {
+        // SFCC birthday is a Date object. Convert to YYYY-MM-DD.
+        var StringUtils = require('dw/util/StringUtils');
+        var Calendar = require('dw/util/Calendar');
+        var cal = new Calendar(profile.birthday);
+        payload.customerAttributes.dateOfBirth = StringUtils.formatCalendar(cal, 'yyyy-MM-dd');
+    }
+
+    return payload;
 }
 
 module.exports = {

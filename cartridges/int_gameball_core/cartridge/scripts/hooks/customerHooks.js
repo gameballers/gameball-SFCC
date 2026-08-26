@@ -1,6 +1,6 @@
 'use strict';
 
-var gameballCustomerApi = require('*/cartridge/scripts/api/gameballCustomerApi');
+var gameballCustomerApi = require('../api/gameballCustomerApi');
 
 module.exports = {
     registered: function (customer) { gameballCustomerApi.sendCustomer(customer, 'app.customer.registered'); },

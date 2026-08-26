@@ -2,16 +2,19 @@
 
 var Site = require('dw/system/Site');
 var Logger = require('dw/system/Logger').getLogger('Gameball', 'gameball_customer_hooks');
-var gameballService = require('*/cartridge/scripts/services/gameballService');
-var gameballCredentials = require('*/cartridge/scripts/services/gameballCredentials');
-var customerPayload = require('*/cartridge/models/payload/customerPayload');
+var gameballCredentials = require('../services/gameballCredentials');
+var customerPayload = require('../../models/payload/customerPayload');
+var gameballService = require('../services/gameballService');
+
 
 /**
  * @returns {boolean} true if the integration is turned on and a Service
  * Credential has been configured in Business Manager
  */
 function isGameballEnabled() {
-    return !!Site.getCurrent().getCustomPreferenceValue('gameballEnabled') && gameballCredentials.isConfigured();
+    // Check both standard and capitalized versions of the preference since it varies by environment
+    var isEnabledPref = Site.getCurrent().getCustomPreferenceValue('Gameball_Enabled') || Site.getCurrent().getCustomPreferenceValue('gameballEnabled');
+    return !!isEnabledPref && gameballCredentials.isConfigured();
 }
 
 /**
@@ -31,10 +34,10 @@ function sendCustomer(customer, hookName) {
             return;
         }
 
+        var payload = customerPayload.build(profile);
         var result = gameballService.call({
             path: 'integrations/customers',
-            method: 'POST',
-            body: customerPayload.build(profile)
+            body: payload
         });
 
         if (!result.isOk()) {
