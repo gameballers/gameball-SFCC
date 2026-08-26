@@ -60,7 +60,10 @@ function sendOrder(order) {
             // unnecessary order save) on every repeat view, e.g. a guest
             // order's confirmation page being reloaded.
             if (gate.skipState && order.custom.gbTrackState !== gate.skipState) {
-                persistResult(order, { gbTrackState: gate.skipState });
+                persistResult(order, { 
+                    gbTrackState: gate.skipState,
+                    gbLastError: 'SKIPPED REASON: ' + gate.reason
+                });
             }
             return;
         }

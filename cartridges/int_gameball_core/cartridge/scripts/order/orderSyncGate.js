@@ -64,8 +64,9 @@ function evaluate(order) {
         return { shouldTrack: false, skipState: 'SKIPPED', reason: 'guest_order' };
     }
 
-    if (getOriginalOrderNo(order)) {
-        return { shouldTrack: false, skipState: 'SKIPPED', reason: 'replacement_order' };
+    var origOrderNo = getOriginalOrderNo(order);
+    if (origOrderNo && origOrderNo !== order.getOrderNo()) {
+        return { shouldTrack: false, skipState: 'SKIPPED', reason: 'replacement_order (' + origOrderNo + ')' };
     }
 
     var status = order.getStatus();
