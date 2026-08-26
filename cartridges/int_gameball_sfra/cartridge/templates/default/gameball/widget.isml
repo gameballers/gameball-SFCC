@@ -1,57 +1,70 @@
 <iscontent type="text/html" charset="UTF-8" compact="true"/>
-<isscript>
-    var Site = require('dw/system/Site').getCurrent();
-    var isEnabled = Site.getCustomPreferenceValue('Gameball_Enabled');
-    var gameballCredentials = require('*/cartridge/scripts/services/gameballCredentials');
-    var apiKey = gameballCredentials.getApiKey();
-</isscript>
+<iscomment>
+    Gameball widget fragment. Rendered ONLY through the Gameball-Widget remote
+    include (see components/footer/pageFooter.isml), never with an isinclude
+    template= : it is shopper-scoped, and SFCC page-cache keys do not include
+    the customer, so inlining it would bake one shopper's name and email into a
+    cached page and re-serve them to every subsequent visitor.
 
-<isif condition="${isEnabled && !empty(apiKey)}">
+    CRITICAL - SECURITY BOUNDARY. The data-gameball-config attribute below is
+    the security boundary of this entire feature. A double-quoted HTML
+    attribute is the one context where the browser UNDOES the platform's
+    encoding for us: ISML is expected to HTML-encode the interpolated value so
+    nothing can break out of the attribute, and the HTML parser entity-decodes
+    it again before getAttribute reads it, so the value round-trips byte for
+    byte.
 
+    UNVERIFIED - CHECK THIS FIRST. That ISML encodes an expression
+    interpolated inside a double-quoted attribute has NOT been confirmed
+    against a live instance; it was written with no sandbox and no Test API
+    Key available. Arbitration risk R-5 designates exactly this the merge gate
+    for this item, because gameballJson.toEmbeddableJson deliberately does NOT
+    escape the double quote - the platform encoder is the only thing standing
+    between the delimiters JSON.stringify emits and the end of this attribute.
 
+    The 5-minute check: save the proof-of-concept first name from spec 01
+    section 8.1 on a test customer, load any storefront page, View Source, and
+    confirm this attribute contains &quot; and no literal double quote and no
+    literal angle bracket. Two distinct ways it can fail. If the encoder
+    escapes the angle brackets but not the double quote, the attribute
+    truncates at the first delimiter, getAttribute returns just "{",
+    JSON.parse throws and gameballWidget.js takes its silent return - a widget
+    that never appears on any page, with nothing logged on either side and
+    View Source as the only diagnostic. If the encoder does nothing at all,
+    that raw quote closes the attribute and an event-handler attribute lands
+    on the div - the stored XSS survives the fix, with toEmbeddableJson
+    contributing nothing because no angle bracket is needed for that breakout.
 
-<isscript>
-    var locale = request.locale;
-    var lang = locale ? locale.split('_')[0] : 'en';
+    The one-token fallback if the check fails: wrap the same pdict value in an
+    isprint tag inside the attribute value with its encoding set to
+    htmldoublequote, which maps to
+    dw.util.SecureEncoder.forHtmlInDoubleQuoteAttribute (confirmed present in
+    the vendored dw-api-mock API surface). The exact spelling of that encoding
+    token is itself UNVERIFIED - settle it in the same pass.
 
-    var initPayload = {
-        APIKey: apiKey || 'MISSING_API_KEY',
-        lang: lang,
-        platform: 'salesforce'
-    };
+    The off encoding (encoding=off on an isprint tag) MUST NEVER be
+    reintroduced in this file, or anywhere else in this cartridge. Grepping
+    cartridges/ for that attribute-value pair and getting zero hits is the
+    durable regression check for the stored XSS this template used to ship: a
+    customer whose own first name closed the inline script element executed
+    arbitrary HTML on every page of the storefront.
 
-    if (customer.authenticated && customer.profile) {
-        initPayload.playerUniqueId = customer.profile.customerNo;
-        initPayload.playerAttributes = {
-            displayName: (customer.profile.firstName || '') + ' ' + (customer.profile.lastName || ''),
-            firstName: customer.profile.firstName || '',
-            lastName: customer.profile.lastName || '',
-            email: customer.profile.email || ''
-        };
-    }
-</isscript>
+    The u003c / u003e / u0026 / u2028 / u2029 escapes visible in the attribute
+    value come from gameballJson.toEmbeddableJson and are DEFENCE IN DEPTH
+    only. Removing them would not reopen the hole; removing the platform's
+    attribute encoder would. Their presence must not convince anyone that
+    the off encoding is safe here.
 
-<!-- Gameball SDK Dynamically Loaded via JavaScript -->
-<script>
-    (function() {
-        var payload = <isprint value="${JSON.stringify(initPayload)}" encoding="off" />;
-        
-        if (!window.GbSdk) {
-            var script = document.createElement("script");
-            script.type = "text/javascript";
-            script.async = true;
-            script.src = "https://assets.gameball.co/widget/js/gameball-init.min.js";
-            
-            script.onload = function() {
-                if (window.GbSdk && window.GbSdk.init) {
-                    window.GbSdk.init(payload);
-                    console.log('Gameball Widget Initialized Successfully (SFCC)');
-                }
-            };
-            document.head.appendChild(script);
-        } else {
-            window.GbSdk.init(payload);
-        }
-    })();
-</script>
+    No isscript block here on purpose (I15): pdict.gameballWidget is assembled
+    in controllers/Gameball.js, which is the only place a Site preference, a
+    Service Credential or a customer identity is read.
+
+    No iscache here on purpose: SFCC caching is opt-in, and an iscache tag
+    inside an included template applies to the ENCLOSING page.
+
+    Design: specs/01-widget-xss-and-enable-pref.md, sections 5.0 to 5.2.
+</iscomment>
+<isif condition="${pdict.gameballWidget && pdict.gameballWidget.render}">
+    <div id="gameball-widget-config" data-gameball-config="${pdict.gameballWidget.configJson}" hidden></div>
+    <script defer src="${URLUtils.staticURL('/js/gameballWidget.js')}"></script>
 </isif>
