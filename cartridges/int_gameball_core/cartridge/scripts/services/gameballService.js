@@ -1,7 +1,7 @@
 'use strict';
 
 var LocalServiceRegistry = require('dw/svc/LocalServiceRegistry');
-var gameballCredentials = require('*/cartridge/scripts/services/gameballCredentials');
+var gameballCredentials = require('../services/gameballCredentials');
 
 /**
  * Gameball HTTP Service for outbound API calls. Configured entirely via
@@ -15,6 +15,9 @@ var gameballService = LocalServiceRegistry.createService('gameball.http.api', {
         var method = params.method || 'POST';
         svc.setRequestMethod(method);
 
+        // CRITICAL: Prevent SFCC from automatically sending the User/Password as a Basic Auth header!
+        svc.setAuthentication('NONE');
+        // Auth + content type headers required on every Gameball API call
         // Auth + content type headers required on every Gameball API call
         svc.addHeader('Content-Type', 'application/json');
         svc.addHeader('APIKey', gameballCredentials.getApiKey());
