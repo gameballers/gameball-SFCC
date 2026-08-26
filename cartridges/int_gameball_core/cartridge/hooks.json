@@ -4,6 +4,7 @@
         { "name": "dw.ocapi.shop.customer.afterPATCH",                 "script": "./scripts/hooks/ocapiShopCustomerHooks.js" },
         { "name": "dw.ocapi.data.customer_list.customers.afterPOST",   "script": "./scripts/hooks/ocapiDataCustomerHooks.js" },
         { "name": "dw.ocapi.data.customer_list.customers.afterPUT",    "script": "./scripts/hooks/ocapiDataCustomerHooks.js" },
-        { "name": "dw.ocapi.data.customer_list.customer.afterPATCH",   "script": "./scripts/hooks/ocapiDataCustomerHooks.js" }
+        { "name": "dw.ocapi.data.customer_list.customer.afterPATCH",   "script": "./scripts/hooks/ocapiDataCustomerHooks.js" },
+        { "name": "dw.ocapi.data.customer_list.customer.beforeDELETE", "script": "./scripts/hooks/ocapiDataCustomerHooks.js" }
     ]
 }
