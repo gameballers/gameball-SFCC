@@ -40,6 +40,26 @@
                         { "@code": "OK", "description": "Used when the step finished successfully." }
                     ]
                 }
+            },
+            {
+                "@type-id": "custom.Gameball.OrderRetry",
+                "@supports-parallel-execution": "false",
+                "@supports-site-context": "true",
+                "@supports-organization-context": "false",
+                "description": "Re-attempts Gameball order tracking for orders left in gbTrackState FAILED by a transient API failure, bounded by a per-order attempt cap and a per-run call cap. Also verifies (rather than blindly re-sends) an order whose previous failure was ambiguous, e.g. a timeout.",
+                "module": "int_gameball_core/cartridge/scripts/job/order/retryFailedOrders.js",
+                "function": "execute",
+                "transactional": "false",
+                "timeout-in-seconds": "3600",
+                "parameters": {
+                    "parameter": []
+                },
+                "status-codes": {
+                    "status": [
+                        { "@code": "ERROR", "description": "Used when the step failed with an error." },
+                        { "@code": "OK", "description": "Used when the step finished successfully." }
+                    ]
+                }
             }
         ]
     }

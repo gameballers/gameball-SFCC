@@ -178,6 +178,55 @@
                 <externally-managed-flag>false</externally-managed-flag>
                 <default-value>true</default-value>
             </attribute-definition>
+            <!-- item 06 -->
+            <attribute-definition attribute-id="gameballRetryEnabled">
+                <display-name xml:lang="x-default">Enable Gameball Failed-Order Retry</display-name>
+                <description xml:lang="x-default">Master switch for the Gameball Order Retry job step. When off the step logs and exits OK without scanning any orders. Independent of gameballEnabled so the retry sweep can be paused without turning off live order tracking.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRetryLookbackDays">
+                <display-name xml:lang="x-default">Gameball Retry Lookback (days)</display-name>
+                <description xml:lang="x-default">How far back the retry sweep looks, as an absolute floor on the order creation date. This is a lower bound only - never a moving window - so an order stays visible to every run until it reaches a terminal state or ages past the floor. Raise it to recover an older backlog. Clamped in code to 1-90.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>7</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRetryMaxAttempts">
+                <display-name xml:lang="x-default">Gameball Retry Max Attempts</display-name>
+                <description xml:lang="x-default">How many retry attempts an order gets before it is settled to the terminal RETRY_EXHAUSTED state and never re-sent. Counts the original confirmation-page attempt as attempt 1. Clamped in code to 1-20.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>5</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRetryMaxOrdersPerRun">
+                <display-name xml:lang="x-default">Gameball Retry Max Orders Per Run</display-name>
+                <description xml:lang="x-default">Hard ceiling on the number of outbound Gameball calls (POST plus verification GET) a single run may issue. Once reached the run stops calling and leaves the remaining orders for the next run. This is the primary throughput brake - SFCC has no sleep primitive. Clamped in code to 1-2000.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>200</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRetryBackoffMinutes">
+                <display-name xml:lang="x-default">Gameball Retry Backoff Base (minutes)</display-name>
+                <description xml:lang="x-default">Base of the exponential spacing between attempts on one order: attempt N is not retried before base x 2^(N-1) minutes after the previous attempt, capped at 8 hours. Prevents a two-hour Gameball outage from burning an order's whole attempt budget in two job runs. Clamped in code to 0-1440.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>30</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRetryProbeBeforeResend">
+                <display-name xml:lang="x-default">Verify Before Re-sending Ambiguous Gameball Orders</display-name>
+                <description xml:lang="x-default">When on (recommended), an order whose previous failure was ambiguous - a timeout, a connection fault or an HTTP 500, where the POST may in fact have succeeded - is first checked with a read-only GET of that order's Gameball transactions, and is only re-POSTed if Gameball has no reward transaction for it. Turn this off only after confirming with Gameball that a duplicate orderId is rejected rather than double-awarded.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>true</default-value>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballConfigs">
@@ -201,6 +250,13 @@
                 <attribute attribute-id="gameballTrackGuestOrders"/>
                 <attribute attribute-id="gameballGuestOrderMode"/>
                 <attribute attribute-id="gameballLinkGuestOrdersByLogin"/>
+                <!-- appended by item 06 -->
+                <attribute attribute-id="gameballRetryEnabled"/>
+                <attribute attribute-id="gameballRetryLookbackDays"/>
+                <attribute attribute-id="gameballRetryMaxAttempts"/>
+                <attribute attribute-id="gameballRetryMaxOrdersPerRun"/>
+                <attribute attribute-id="gameballRetryBackoffMinutes"/>
+                <attribute attribute-id="gameballRetryProbeBeforeResend"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
@@ -208,7 +264,7 @@
         <custom-attribute-definitions>
             <attribute-definition attribute-id="gbTrackState">
                 <display-name xml:lang="x-default">Gameball Track State</display-name>
-                <description xml:lang="x-default">Outcome of syncing this order to Gameball: TRACKED (successfully sent), SKIPPED (excluded by a gating rule - integration off, replacement order, cancelled/failed status, or a guest order while gameballTrackGuestOrders is off or gameballGuestOrderMode is SKIP), or FAILED (the API call errored or returned a non-ok result).</description>
+                <description xml:lang="x-default">Outcome of syncing this order to Gameball. TRACKED - successfully sent, or Gameball confirmed it already had this order. SKIPPED - excluded by a gating rule: integration off, replacement order, cancelled/failed status, or a guest order while gameballTrackGuestOrders is off or gameballGuestOrderMode is SKIP. FAILED - the attempt errored transiently and the Gameball Order Retry job will try again. FAILED_PERMANENT - the attempt failed for a reason that will fail identically every time (malformed payload, invalid transaction time); never retried. RETRY_EXHAUSTED - the retry job used up gameballRetryMaxAttempts without success; never retried. Refund state is tracked separately on gbRefundState.</description>
                 <type>string</type>
                 <mandatory-flag>false</mandatory-flag>
                 <externally-managed-flag>false</externally-managed-flag>
@@ -242,6 +298,43 @@
                 <mandatory-flag>false</mandatory-flag>
                 <externally-managed-flag>false</externally-managed-flag>
             </attribute-definition>
+            <!-- item 06 -->
+            <attribute-definition attribute-id="gbLastErrorCode">
+                <display-name xml:lang="x-default">Gameball Last Error Code</display-name>
+                <description xml:lang="x-default">The Gameball error code from the most recent failed ORDER-TRACKING attempt (e.g. 3000, 9004), or a synthetic transport token when Gameball returned no envelope: TIMEOUT, HTTP_500, SVC_UNAVAILABLE, PROBE_FAILED, PAYLOAD_BUILD_FAILED, EXCEPTION, NO_RESULT. This is what the Gameball Order Retry job classifies on - a 3000 will fail identically forever and is settled permanently without another call, a TIMEOUT is verified and re-sent. Refund attempts are tracked separately (see gbRefundState).</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbLastRequestId">
+                <display-name xml:lang="x-default">Gameball Last Request Id</display-name>
+                <description xml:lang="x-default">The requestId from the most recent Gameball error envelope for an ORDER-TRACKING attempt. This is the token Gameball support asks for; it is the whole reason the field exists.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbRetryAttempts">
+                <display-name xml:lang="x-default">Gameball Track Attempts</display-name>
+                <description xml:lang="x-default">How many Gameball ORDER-TRACKING attempts this order has consumed, including the original confirmation-page attempt. When it reaches gameballRetryMaxAttempts the order is settled to RETRY_EXHAUSTED and is never re-sent. Not incremented for failures the merchant caused (bad credentials, Gameball disabled) or that SFCC's own rate limiter/circuit breaker caused. This counts order-tracking attempts only - it is unrelated to any refund attempt ledger.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>0</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbLastAttemptAt">
+                <display-name xml:lang="x-default">Gameball Last Attempt At</display-name>
+                <description xml:lang="x-default">Timestamp of the most recent Gameball ORDER-TRACKING attempt, successful or not. Operator visibility only - never used as a search predicate. Distinct from GameballErasureRequest's own gbLastAttemptAt field, which tracks a customer erasure mandate, not an order.</description>
+                <type>datetime</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbNextRetryAt">
+                <display-name xml:lang="x-default">Gameball Next Retry Not Before</display-name>
+                <description xml:lang="x-default">Earliest time the Gameball Order Retry job may attempt this order again. Applied as an exponential backoff so a Gameball outage does not burn the whole attempt budget in consecutive job runs. Empty means "due now". Never used as a search predicate - it is evaluated in the job callback, on orders the state predicate already matched.</description>
+                <type>datetime</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballOrder">
@@ -251,6 +344,12 @@
                 <attribute attribute-id="gbCustomerId"/>
                 <attribute attribute-id="gbLastError"/>
                 <attribute attribute-id="gbCustomerIdSource"/>
+                <!-- appended by item 06 -->
+                <attribute attribute-id="gbLastErrorCode"/>
+                <attribute attribute-id="gbLastRequestId"/>
+                <attribute attribute-id="gbRetryAttempts"/>
+                <attribute attribute-id="gbLastAttemptAt"/>
+                <attribute attribute-id="gbNextRetryAt"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
