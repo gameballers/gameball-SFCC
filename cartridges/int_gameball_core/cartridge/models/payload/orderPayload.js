@@ -5,6 +5,7 @@ var LineItemCtnr = require('dw/order/LineItemCtnr');
 var PaymentInstrument = require('dw/order/PaymentInstrument');
 var gameballMoney = require('*/cartridge/scripts/util/gameballMoney');
 var lineItemPayload = require('*/cartridge/models/payload/lineItem');
+var gameballIdentity = require('*/cartridge/models/identity/gameballIdentity');
 
 // Not a standard dw.order.PaymentInstrument constant - this is the custom
 // payment method id merchants configure for a "pay with Gameball points"
@@ -274,20 +275,21 @@ function buildExtra(order) {
  * @returns {Object}
  */
 function build(order) {
-    // orderSyncGate already guarantees a registered customer+profile before
-    // this is ever called, but guard here too rather than rely on caller
-    // discipline - a future caller (e.g. a retry-all-FAILED-orders batch job)
-    // might invoke build() without re-running the gate first.
-    var customer = order.getCustomer();
-    var profile = customer && customer.getProfile();
-    if (!profile) {
-        throw new Error('Gameball order payload requires a registered customer profile');
+    // orderSyncGate already guarantees a resolvable Gameball identity before
+    // this is ever called (a registered customer, a guest matched to an
+    // existing login, or a derived guest id), but guard here too rather
+    // than rely on caller discipline (H22) - a future caller such as item
+    // 06's retry-FAILED-orders job might invoke build() without re-running
+    // the gate first.
+    var identity = gameballIdentity.getOrderCustomerId(order);
+    if (!identity.customerId) {
+        throw new Error('Gameball order payload requires a resolvable customerId (' + (identity.reason || 'unknown') + ')');
     }
 
     var creationDate = order.getCreationDate();
 
     var payload = {
-        customerId: profile.customerNo,
+        customerId: identity.customerId,
         orderId: order.getOrderNo(),
         orderDate: creationDate ? creationDate.toISOString() : new Date().toISOString(),
         totalPaid: calculateTotalPaid(order),
@@ -296,9 +298,12 @@ function build(order) {
         totalShipping: gameballMoney.toNumber(order.getShippingTotalPrice()),
         totalTax: gameballMoney.toNumber(order.getTotalTax()),
         channel: resolveChannel(order),
-        // Always false this iteration - guest orders are skipped entirely by
-        // orderSyncGate before this builder is ever called.
-        guest: false,
+        // false on identity ladder rungs 1 (registered) and 2 (guest matched
+        // to an existing login), true only on rung 3 (true guest). Sent
+        // explicitly on every order, including registered ones. Replaces the
+        // previous hard-coded false, which assumed every order reaching this
+        // builder already had a registered profile.
+        guest: identity.guest,
         cartId: order.getUUID(),
         merchant: {
             uniqueId: Site.getCurrent().getID(),
