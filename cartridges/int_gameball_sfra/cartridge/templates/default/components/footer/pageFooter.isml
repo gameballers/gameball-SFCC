@@ -31,5 +31,5 @@
         </div>
     </div>
     <iscomment>Gameball Widget Injection</iscomment>
-    <isinclude template="gameball/widget"/>
+    <isinclude url="${URLUtils.url('Gameball-Widget')}"/>
 </footer>

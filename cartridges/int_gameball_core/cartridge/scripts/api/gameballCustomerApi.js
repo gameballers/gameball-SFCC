@@ -12,9 +12,7 @@ var gameballService = require('../services/gameballService');
  * Credential has been configured in Business Manager
  */
 function isGameballEnabled() {
-    // Check both standard and capitalized versions of the preference since it varies by environment
-    var isEnabledPref = Site.getCurrent().getCustomPreferenceValue('Gameball_Enabled') || Site.getCurrent().getCustomPreferenceValue('gameballEnabled');
-    return !!isEnabledPref && gameballCredentials.isConfigured();
+    return !!Site.getCurrent().getCustomPreferenceValue('gameballEnabled') && gameballCredentials.isConfigured();
 }
 
 /**
