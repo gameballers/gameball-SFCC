@@ -96,19 +96,6 @@
     }
 
     /**
-     * SFCC's CSRF cookie, read for inclusion as a form field on every
-     * POST - csrfProtection.validateAjaxRequest checks the submitted
-     * csrf_token value against this same cookie. UNVERIFIED exact cookie
-     * name against a live instance in this environment; 'csrf_token' is the
-     * documented default.
-     * @returns {string}
-     */
-    function readCsrfToken() {
-        var match = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/);
-        return match ? decodeURIComponent(match[1]) : '';
-    }
-
-    /**
      * @param {string} url
      * @param {Object} params - form fields
      * @param {function(Object)} onSuccess - called with the parsed JSON body
@@ -204,6 +191,48 @@
         internal_error: 'Something went wrong. Please try again.'
     };
 
+    // Bootstrap 4 (BS4) utility/component classes, used below via
+    // element.className instead of the hand-rolled inline
+    // element.style.cssText strings this panel shipped with originally.
+    // Named UPPER_SNAKE_CASE constants per house style (H7), and because the
+    // panel class is genuinely identical between renderApplyForm's and
+    // renderAppliedState's wrap element - a single constant is also the only
+    // way to keep the two in sync if it is ever restyled again.
+    //
+    // This assumes the storefront theme loads BS4 - the SFRA reference
+    // architecture's own default, and grep-confirmed live in the sibling
+    // Yotpo loyalty cartridge's shipped templates: card/card-body,
+    // form-control, btn btn-primary/btn-block, and the grid/text utilities
+    // all appear throughout checkout.isml and confirmation.isml. Notably,
+    // the exact '.order-total-summary' selector this file's own
+    // SUMMARY_SELECTORS constant (above) targets for panel placement already
+    // sits inside a BS4 <div class="card-body order-total-summary"> in that
+    // reference markup - direct evidence this panel's insertion point is
+    // itself Bootstrap-themed. custom-range/text-danger/btn-outline-secondary
+    // and the mb-*/mt-*/my-* spacing utilities are core BS4 classes shipped
+    // in every default BS4 build rather than an optional plugin, but were
+    // never exercised by Yotpo's own markup, so - UNVERIFIED - there is no
+    // repo-local grep hit to cite for those four specifically, and none of
+    // this has been checked against any one merchant's live compiled CSS.
+    //
+    // The rejected alternative was leaving the original inline-style
+    // literals in place: those render as a plain grey box with browser-
+    // default buttons that visually clashes against a Bootstrap-themed
+    // cart/checkout page's own card/button chrome, right next to the very
+    // '.order-total-summary' card this panel is inserted beside. Swapping to
+    // className cannot make things worse if the assumption is wrong, though
+    // - an unrecognised class name is simply inert, never a thrown error and
+    // never a hidden panel, so a merchant not running Bootstrap sees the same
+    // plain-but-functional HTML this panel has always degraded to on any
+    // other missing-precondition path in this file (H17's client-side form).
+    var PANEL_CLASS = 'card card-body mb-3';
+    var PANEL_LINE_CLASS = 'mb-2';
+    var SLIDER_CLASS = 'custom-range';
+    var SELECTED_LINE_CLASS = 'my-2';
+    var APPLY_BUTTON_CLASS = 'btn btn-primary';
+    var REMOVE_BUTTON_CLASS = 'btn btn-outline-secondary btn-sm';
+    var MESSAGE_LINE_CLASS = 'text-danger small mt-2';
+
     function formatMoney(amount, currency) {
         var value = (Math.round((Number(amount) || 0) * 100) / 100).toFixed(2);
         return currency ? (value + ' ' + currency) : value;
@@ -211,10 +240,10 @@
 
     /**
      * Builds the panel markup for a NO-live-hold state: balance line,
-     * slider, Apply button. Plain inline styles - no SCSS/CSS pipeline
-     * exists anywhere in this cartridge to hang a class-based stylesheet
-     * off, and adding one from scratch for a single small panel is out of
-     * proportion to what this feature needs.
+     * slider, Apply button. Styled via the BS4 class constants declared
+     * above (see that block's comment for why className replaced this
+     * function's original inline style.cssText strings, and what a
+     * non-Bootstrap theme falls back to).
      * @param {Object} state - a Gameball-RedeemState response
      * @param {Element} container
      * @returns {void}
@@ -223,12 +252,12 @@
         container.innerHTML = '';
 
         var wrap = document.createElement('div');
-        wrap.style.cssText = 'border:1px solid #ddd;border-radius:4px;padding:12px;margin:12px 0;font-size:14px;';
+        wrap.className = PANEL_CLASS;
 
         var balanceLine = document.createElement('div');
         balanceLine.textContent = 'You have ' + state.availablePointsBalance + ' '
             + (state.pointsName || 'points') + ' = ' + formatMoney(state.availablePointsValue, state.currency) + ' available';
-        balanceLine.style.cssText = 'margin-bottom:8px;';
+        balanceLine.className = PANEL_LINE_CLASS;
         wrap.appendChild(balanceLine);
 
         if (state.maxRedeemablePoints <= 0) {
@@ -242,10 +271,14 @@
         slider.max = String(state.maxRedeemablePoints);
         slider.step = '1';
         slider.value = '0';
-        slider.style.cssText = 'width:100%;';
+        // No width:100% here - BS4's own stylesheet already sets that on
+        // .custom-range, so restating it inline would just be dead weight
+        // riding along on every page that DOES have Bootstrap, for zero
+        // benefit on a page that does not.
+        slider.className = SLIDER_CLASS;
 
         var selectedLine = document.createElement('div');
-        selectedLine.style.cssText = 'margin:8px 0;';
+        selectedLine.className = SELECTED_LINE_CLASS;
 
         var pointsPerCurrencyUnit = state.availablePointsValue > 0
             ? (state.availablePointsBalance / state.availablePointsValue) : 0;
@@ -263,10 +296,10 @@
         var applyButton = document.createElement('button');
         applyButton.type = 'button';
         applyButton.textContent = 'Apply Points';
-        applyButton.style.cssText = 'padding:6px 14px;';
+        applyButton.className = APPLY_BUTTON_CLASS;
 
         var messageLine = document.createElement('div');
-        messageLine.style.cssText = 'color:#b00020;margin-top:6px;';
+        messageLine.className = MESSAGE_LINE_CLASS;
 
         applyButton.addEventListener('click', function () {
             var points = parseInt(slider.value, 10) || 0;
@@ -277,7 +310,31 @@
             applyButton.disabled = true;
             messageLine.textContent = '';
 
-            postForm(redeemUrl, { points: points, csrf_token: readCsrfToken() }, function (result) {
+            // The field name/value pair here are whatever
+            // csrfProtection.generateToken minted on the Gameball-RedeemState
+            // fetch that produced THIS render of the panel (see Gameball.js's
+            // RedeemState route for why that is the only place in the
+            // cartridge allowed to mint one) - built as a dynamically-keyed
+            // object rather than a hardcoded csrf_token property because
+            // SFRA's own tokenName is an implementation detail of that
+            // middleware, not a contract this file should hardcode a guess
+            // at. This replaces the previous readCsrfToken(), which read a
+            // csrf_token COOKIE via document.cookie: that is the
+            // double-submit-cookie pattern, and dw.web.CSRFProtection does
+            // not implement it - no code path in this cartridge ever wrote
+            // that cookie, so the field was always sent empty and every
+            // Apply/Remove failed CSRF-AjaxFail. If state.csrf is missing
+            // (generateToken did not run - a defect elsewhere, never a
+            // Gameball code path), the field is simply omitted rather than
+            // sent as a blank/dummy value: an omitted field and a wrong one
+            // both fail Cart-Redeem's validateAjaxRequest identically, so
+            // there is nothing a fallback value would buy here.
+            var formParams = { points: points };
+            if (state.csrf && state.csrf.tokenName) {
+                formParams[state.csrf.tokenName] = state.csrf.token;
+            }
+
+            postForm(redeemUrl, formParams, function (result) {
                 applyButton.disabled = false;
                 if (result && result.success) {
                     fetchAndRender(container);
@@ -299,7 +356,8 @@
 
     /**
      * Builds the panel markup for a LIVE-hold state: applied summary +
-     * Remove button.
+     * Remove button. Styled via the same BS4 class constants renderApplyForm
+     * uses above (see that block's comment).
      * @param {Object} state
      * @returns {void}
      * @param {Element} container
@@ -308,27 +366,36 @@
         container.innerHTML = '';
 
         var wrap = document.createElement('div');
-        wrap.style.cssText = 'border:1px solid #ddd;border-radius:4px;padding:12px;margin:12px 0;font-size:14px;';
+        wrap.className = PANEL_CLASS;
 
         var line = document.createElement('div');
         line.textContent = state.currentHold.holdPointsRedeemed + ' ' + (state.pointsName || 'points')
             + ' applied = ' + formatMoney(state.currentHold.holdAmount, state.currency) + ' off';
-        line.style.cssText = 'margin-bottom:8px;';
+        line.className = PANEL_LINE_CLASS;
         wrap.appendChild(line);
 
         var removeButton = document.createElement('button');
         removeButton.type = 'button';
         removeButton.textContent = 'Remove';
-        removeButton.style.cssText = 'padding:6px 14px;';
+        removeButton.className = REMOVE_BUTTON_CLASS;
 
         var messageLine = document.createElement('div');
-        messageLine.style.cssText = 'color:#b00020;margin-top:6px;';
+        messageLine.className = MESSAGE_LINE_CLASS;
 
         removeButton.addEventListener('click', function () {
             removeButton.disabled = true;
             messageLine.textContent = '';
 
-            postForm(redeemRemoveUrl, { csrf_token: readCsrfToken() }, function (result) {
+            // Same dynamically-keyed CSRF field pattern as renderApplyForm's
+            // Apply handler above - see its comment for the full reasoning.
+            // No { points: ... } base here since RedeemRemove takes no
+            // points argument, only whichever CSRF field ends up present.
+            var formParams = {};
+            if (state.csrf && state.csrf.tokenName) {
+                formParams[state.csrf.tokenName] = state.csrf.token;
+            }
+
+            postForm(redeemRemoveUrl, formParams, function (result) {
                 removeButton.disabled = false;
                 if (result && result.success) {
                     fetchAndRender(container);
