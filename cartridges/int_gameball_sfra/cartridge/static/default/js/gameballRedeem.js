@@ -233,6 +233,40 @@
     var REMOVE_BUTTON_CLASS = 'btn btn-outline-secondary btn-sm';
     var MESSAGE_LINE_CLASS = 'text-danger small mt-2';
 
+    /**
+     * Reloads the current page after a successful Apply or Remove, rather
+     * than only re-fetching and re-rendering THIS panel via fetchAndRender.
+     *
+     * A successful Apply/Remove changes the basket's own PriceAdjustment,
+     * which moves the page's OWN order-totals summary (subtotal, discount
+     * line, grand total, tax) - markup this script never wrote and has no
+     * reach into. fetchAndRender alone left that summary showing the
+     * pre-Apply/pre-Remove numbers until a manual page refresh, which is
+     * exactly the bug this function exists to close.
+     *
+     * The correct-in-general fix would hook into whatever AJAX/event
+     * mechanism this storefront's own cart/checkout JS already uses to
+     * refresh its totals after a basket change (base SFRA cartridges
+     * typically re-fetch a totals fragment or trigger a custom event other
+     * components listen for) - but this session has already found this
+     * particular SFRA fork diverging from generic SFRA assumptions twice
+     * (CheckoutShippingServices being a separate controller from
+     * CheckoutServices; the CSRF middleware populating res.getViewData()
+     * rather than res.locals), so guessing a third undocumented internal
+     * (an event name, a fragment endpoint) risks shipping something that
+     * silently does nothing on this instance, same as the original bug.
+     * A full reload is unglamorous - it gives up the AJAX panel's own
+     * snappier feel for this one moment - but it is guaranteed correct on
+     * any theme/version, matches the user's own confirmed manual
+     * workaround, and touches nothing about how this storefront's totals
+     * actually re-render. Swap this for a targeted totals refresh once
+     * that mechanism is confirmed on a live sandbox.
+     * @returns {void}
+     */
+    function reloadForFreshTotals() {
+        window.location.reload();
+    }
+
     function formatMoney(amount, currency) {
         var value = (Math.round((Number(amount) || 0) * 100) / 100).toFixed(2);
         return currency ? (value + ' ' + currency) : value;
@@ -335,12 +369,16 @@
             }
 
             postForm(redeemUrl, formParams, function (result) {
-                applyButton.disabled = false;
                 if (result && result.success) {
-                    fetchAndRender(container);
-                } else {
-                    messageLine.textContent = (result && ERROR_COPY[result.error]) || ERROR_COPY.try_again;
+                    // Full reload, deliberately, rather than only
+                    // re-fetching this panel - see reloadForFreshTotals's own
+                    // comment for why.
+                    reloadForFreshTotals();
+                    return;
                 }
+
+                applyButton.disabled = false;
+                messageLine.textContent = (result && ERROR_COPY[result.error]) || ERROR_COPY.try_again;
             }, function () {
                 applyButton.disabled = false;
                 messageLine.textContent = ERROR_COPY.try_again;
@@ -396,12 +434,13 @@
             }
 
             postForm(redeemRemoveUrl, formParams, function (result) {
-                removeButton.disabled = false;
                 if (result && result.success) {
-                    fetchAndRender(container);
-                } else {
-                    messageLine.textContent = ERROR_COPY.try_again;
+                    reloadForFreshTotals();
+                    return;
                 }
+
+                removeButton.disabled = false;
+                messageLine.textContent = ERROR_COPY.try_again;
             }, function () {
                 removeButton.disabled = false;
                 messageLine.textContent = ERROR_COPY.try_again;
