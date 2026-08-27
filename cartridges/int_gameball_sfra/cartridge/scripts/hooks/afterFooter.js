@@ -13,9 +13,8 @@
  * @returns {string}
  */
 function afterFooter(pdict) {
-    var Template = require('dw/util/Template');
-    var template = new Template('gameball/redeemInjector');
-    return template.render(pdict).getText();
+    var ISML = require('dw/template/ISML');
+    ISML.renderTemplate('gameball/redeemInjector', pdict);
 }
 
 module.exports = {

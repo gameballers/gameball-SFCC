@@ -312,8 +312,9 @@ server.get('RedeemState', server.middleware.https, csrfProtection.generateToken,
     // the panel used to (and SFCC's dw.web.CSRFProtection does not implement,
     // hence CSRF-AjaxFail on every Apply/Remove before this fix) - see
     // gameballRedeem.js for the client-side half.
-    if (res.locals.csrf) {
-        viewData.csrf = { token: res.locals.csrf.token, tokenName: res.locals.csrf.tokenName };
+    var resViewData = res.getViewData();
+    if (resViewData && resViewData.csrf) {
+        viewData.csrf = { token: resViewData.csrf.token, tokenName: resViewData.csrf.tokenName };
     }
 
     res.json(viewData);
