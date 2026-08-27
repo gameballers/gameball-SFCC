@@ -81,7 +81,7 @@ function evaluate(order) {
         return { shouldTrack: false, skipState: 'SKIPPED', reason: 'replacement_order (' + origOrderNo + ')' };
     }
 
-    var status = order.getStatus();
+    var status = order.getStatus().value;
     if (status === Order.ORDER_STATUS_CANCELLED || status === Order.ORDER_STATUS_FAILED) {
         return { shouldTrack: false, skipState: 'SKIPPED', reason: 'terminal_status' };
     }
