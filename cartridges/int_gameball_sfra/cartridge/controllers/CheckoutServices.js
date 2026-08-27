@@ -11,31 +11,6 @@ var redemptionStateStore = require('*/cartridge/scripts/redemption/redemptionSta
 var redemptionOrderHandoff = require('*/cartridge/scripts/redemption/redemptionOrderHandoff');
 
 /**
- * Reconciles any live Pay with Points hold against the basket after shipping
- * is submitted - the checkout-flow half of the same self-healing check
- * Cart.js appends onto every basket-mutating cart route (see
- * redemptionReconcile.js). A shipping method change can move the basket's
- * eligible total, which is exactly what this catches before the shopper
- * reaches payment.
- *
- * @name Base/CheckoutServices-SubmitShipping
- * @function
- * @memberof CheckoutServices
- */
-server.append('SubmitShipping', function (req, res, next) {
-    try {
-        var basket = BasketMgr.getCurrentBasket();
-        if (basket) {
-            redemptionReconcile.reconcileBasketHold(basket);
-        }
-    } catch (e) {
-        Logger.error('Gameball redemption reconciliation did not run on CheckoutServices-SubmitShipping: {0}', e && e.message);
-    }
-
-    next();
-});
-
-/**
  * Reconciles any live hold, then - if it is still live - stashes its
  * reference in session as a fallback for PlaceOrder's own hold-to-order
  * handoff (redemptionOrderHandoff.confirmOrRepair). Two small strings, well
