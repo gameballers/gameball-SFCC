@@ -40,7 +40,7 @@ convenience/operability, not functional · Conditional = depends on your rollout
 |---|---|---|---|
 | Signed session token / identity verification | Raw `customerNo` as `playerUniqueId` with no signature — anyone who can guess another customer's ID can view their balance | Must-have before wide rollout | [skip ] |
 | Consent gating before sending PII | Customer name/email are broadcast into every page unconditionally | Should-have | [ skip] |
-| Redemption / coupon UI (spend points at checkout) | Customers can earn points but have no way to actually redeem them in the storefront | Must-have — without this there's no real "loyalty program" from the shopper's side | [skip ] |
+| Redemption / coupon UI (spend points at checkout) | Customers can earn points but have no way to actually redeem them in the storefront | Must-have — without this there's no real "loyalty program" from the shopper's side | [keep] — "Pay with Points" hold/burn/release UI on cart + checkout (item 08). Not the Gameball widget SDK's own `applyCoupon()` button, which stays dead on SFCC, and not the separate, still-unbuilt Model B coupon-code redemption (§8.4). |
 
 ## Orders
 
@@ -51,7 +51,7 @@ convenience/operability, not functional · Conditional = depends on your rollout
 | Reconciliation job (catch orders cancelled/refunded *after* being tracked) | Points awarded on an order later cancelled are never clawed back | Must-have (overlaps with Refunds below — same underlying job) | [skip ] |
 | Backfill for historical orders | Orders placed before cartridge install never sync | Conditional — same call as customer backfill | [skip ] |
 | Retry for `FAILED` orders | A transient API failure marks the order `FAILED` permanently, no automatic or manual retry | Should-have | [keep ] |
-| Redemption on orders (`redemption.pointsHoldReference`/`couponCodes`) | Can't report a checkout-time points redemption even once the widget supports it | Must-have (pairs with widget redemption UI above) | [skip ] |
+| Redemption on orders (`redemption.pointsHoldReference`/`couponCodes`) | Can't report a checkout-time points redemption even once the widget supports it | Must-have (pairs with widget redemption UI above) | [keep] — `pointsHoldReference` only, via `orderPayload.js`'s `resolveRedemption()`. `couponCodes`/`couponsLockReference` remain unbuilt (Model B coupon feature, not this item). |
 
 ## Refunds
 
@@ -63,7 +63,7 @@ convenience/operability, not functional · Conditional = depends on your rollout
 
 | Scenario | Impact if left unbuilt | Recommendation | Decision |
 |---|---|---|---|
-| Hold points, release points, apply-as-coupon | No mechanism for a customer to actually spend earned points anywhere in the storefront | Must-have | [skip ] |
+| Hold points, release points, apply-as-coupon | No mechanism for a customer to actually spend earned points anywhere in the storefront | Must-have | [keep] — hold and release are built (item 08, "Pay with Points": `scripts/api/gameballRedemptionApi.js`, `scripts/redemption/*`). Apply-as-coupon (Model B, §8.4) is not — a separate, separately-scoped feature. |
 
 ## Reliability
 
