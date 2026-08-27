@@ -1,0 +1,5 @@
+{
+    "hooks": [
+        { "name": "app.template.afterFooter", "script": "./scripts/hooks/afterFooter.js" }
+    ]
+}

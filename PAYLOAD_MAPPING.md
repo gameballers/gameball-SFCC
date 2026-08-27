@@ -358,7 +358,8 @@ core shared with `sendOrder`). **Gate:** `orderSyncGate.evaluate()` (`orderSyncG
 | `email` | string | Conditional | `order.getCustomerEmail()` | key omitted entirely when falsy (H31) | COND | `orderPayload.js:315-318` |
 | `mobile` | string | Conditional | billing address phone, falling back to the default shipment's shipping address phone | plausibility-gated (`/\d/`) — omit rather than send a placeholder | COND | `orderPayload.js:193-214,320-323` |
 | `lineItems` | array\<LineItem\> | No | §3.2 | key omitted when the array is empty | COND | `orderPayload.js:325-328` |
-| `redemption.pointsHoldReference` · `.couponsLockReference` · `.couponCodes` | string / string / array\<string\> | No | — | redemption/spend flow is a binding Skip | SKIP-DECISION | `INTEGRATION_GAPS.md:54,66` |
+| `redemption.pointsHoldReference` | string | No | order-level `PriceAdjustment.custom.gbHoldReference` (falls back to `Order.custom.gbHoldReference`) | item 08, "Pay with Points" — omitted entirely when no hold-based redemption exists on the order (H31) | COND | `orderPayload.js:resolveRedemption` |
+| `redemption.couponsLockReference` · `.couponCodes` | string / array\<string\> | No | — | still unbuilt — the separate Model B coupon-code redemption feature (§8.4), not item 08 | SKIP-DECISION | `INTEGRATION_GAPS.md:54,66` |
 | `merchant.uniqueId` | string | No | `Site.getCurrent().getID()` | | SENT | `orderPayload.js:308-311` |
 | `merchant.name` | string | No | `Site.getCurrent().getName()` | | SENT | `orderPayload.js:308-311` |
 | `merchant.branch.uniqueId` | string | Conditional — mandatory if `branch` present | — | BOPIS only; no store-id source is read | SKIP-NO-SOURCE | no assignment; `PLAN §13.3 (line 2000)` |

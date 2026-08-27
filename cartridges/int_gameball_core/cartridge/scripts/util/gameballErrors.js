@@ -80,18 +80,23 @@ var DEFAULT_TABLE = {
 /**
  * Per-scope overrides, consulted before DEFAULT_TABLE.
  *
- * The four buckets are pre-created empty so a later item adds rows without
+ * The buckets are pre-created empty so a later item adds rows without
  * touching a structure another item owns - the alternative, each item creating
- * its own bucket, makes four separate changes contend on one object literal.
+ * its own bucket, makes several separate changes contend on one object literal.
  * Ownership, which nobody may cross:
- *   CUSTOMER - this item. Deliberately empty: for customer upserts the default
- *              table IS the complete table, so an override here would be a
- *              second copy of it waiting to drift.
- *   DELETE   - the GDPR erasure item: HTTP 404 and 7000 both mean SUCCESS
- *              there, because "the record is already gone" is the goal.
- *   ORDER    - the order-retry item: the 9000-9008 range and the synthetic
- *              transport tokens.
- *   REFUND   - the refund item, where 9003 diverges to MANUAL_REVIEW.
+ *   CUSTOMER    - this item. Deliberately empty: for customer upserts the
+ *                 default table IS the complete table, so an override here
+ *                 would be a second copy of it waiting to drift.
+ *   DELETE      - the GDPR erasure item: HTTP 404 and 7000 both mean SUCCESS
+ *                 there, because "the record is already gone" is the goal.
+ *   ORDER       - the order-retry item: the 9000-9008 range and the synthetic
+ *                 transport tokens.
+ *   REFUND      - the refund item, where 9003 diverges to MANUAL_REVIEW.
+ *   REDEMPTION  - the Pay with Points item (08): 9006/9007/9008 as they
+ *                 appear on a direct transactions/hold or
+ *                 transactions/hold/{ref} call, which read differently than
+ *                 the SAME codes on an order-tracking POST (see ORDER's own
+ *                 9006 comment below).
  */
 var SCOPE_TABLES = {
     CUSTOMER: {},
@@ -163,14 +168,21 @@ var SCOPE_TABLES = {
         // is exactly the kind of thing an operator can go fix.
         '9005': { disposition: DISPOSITION.PERMANENT, remediation: 'reversed transaction not found - almost always an orderId casing mismatch' },
         // 9006 (hold reference not found) and 9008 (insufficient point
-        // balance) are only reachable with a redemption block, which is
-        // Skip: Redemption/spend flow in this iteration - classified for
-        // table completeness only, per spec 06 section 7.1's own note.
+        // balance) are reachable here on an order-tracking POST that carries
+        // a redemption block (item 08, Pay with Points) - PERMANENT, same as
+        // every other row in this range, because a stale/invalid hold
+        // reference or an over-spent hold on order tracking is not
+        // resendable as-is. Distinct from the REDEMPTION scope's own 9006
+        // row below (ALREADY_APPLIED there): that one classifies a release
+        // call against transactions/hold/{ref} directly, where "not found"
+        // means the goal state is already true; here it means the order's
+        // burn attempt itself was rejected.
         '9006': { disposition: DISPOSITION.PERMANENT, remediation: '' },
         // 9007 (invalid transaction time) - a far-past orderDate. Permanent
         // here; backfill of pre-cartridge orders is Skip, so there is no
         // future item that would need this reclassified.
         '9007': { disposition: DISPOSITION.PERMANENT, remediation: '' },
+        // See the 9006 comment above - now reachable via item 08.
         '9008': { disposition: DISPOSITION.PERMANENT, remediation: '' },
 
         // Synthetic transport tokens - never a Gameball code, always something
@@ -288,6 +300,37 @@ var SCOPE_TABLES = {
         // 3004 Operation unachievable - PERMANENT; refundDelivery.js routes
         // it to MANUAL_REVIEW.
         '3004': { disposition: DISPOSITION.PERMANENT, remediation: '' }
+    },
+
+    // Item 08 (Pay with Points). Ownership is exactly 9006/9007/9008 - calls
+    // made directly against transactions/hold and transactions/hold/{ref},
+    // as opposed to the ORDER scope's own 9006/9008 rows above, which
+    // classify the SAME codes as they appear on an order-tracking POST that
+    // carries a redemption block. The two readings differ on purpose (see
+    // each row below), which is exactly why this needs its own bucket rather
+    // than reusing ORDER's.
+    REDEMPTION: {
+        // Hold reference not found. On a DELETE (release) this is
+        // unambiguous: the hold is already gone, which is the goal state a
+        // release call wants, so it settles as success - mirrors the DELETE
+        // scope's own 404/7000 -> SUCCESS pattern for GDPR erasure ("the
+        // record is already gone" is the target state there too). This bucket
+        // has no caller that issues a hold-create with a caller-supplied
+        // reference, so there is no create-time reading of 9006 to weigh
+        // against this one.
+        '9006': { disposition: DISPOSITION.ALREADY_APPLIED, remediation: '' },
+        // Invalid transaction time - our own stamped-at-call-time value was
+        // rejected. A bug, not a user-fixable-by-retrying-the-same-amount
+        // condition.
+        '9007': { disposition: DISPOSITION.PERMANENT, remediation: '' },
+        // Insufficient point balance - a normal declined-request outcome on
+        // a hold-create, not a system failure. Classified PERMANENT (not
+        // retryable as-is); the CALLER decides this means "tell the shopper
+        // to pick a smaller amount" rather than logging at error level or
+        // alerting - this file has no opinion on that, exactly as
+        // refundDelivery.js already layers ledger-state business logic on
+        // top of this file's plain dispositions for the REFUND scope above.
+        '9008': { disposition: DISPOSITION.PERMANENT, remediation: '' }
     }
 };
 

@@ -6,9 +6,13 @@ var server = require('server');
 // throws. server.replace is banned outright (H44) and is not used anywhere.
 
 var Site = require('dw/system/Site');
+var BasketMgr = require('dw/order/BasketMgr');
 var Logger = require('dw/system/Logger').getLogger('Gameball', 'gameball.widget');
 var gameballJson = require('*/cartridge/scripts/util/gameballJson');
 var widgetPayload = require('*/cartridge/models/payload/widgetPayload');
+var gameballIdentity = require('*/cartridge/models/identity/gameballIdentity');
+var redemptionStateStore = require('*/cartridge/scripts/redemption/redemptionStateStore');
+var redemptionReconcile = require('*/cartridge/scripts/redemption/redemptionReconcile');
 
 /**
  * Resolves everything the widget fragment needs for the CURRENT session.
@@ -142,6 +146,129 @@ server.get('Widget', server.middleware.include, function (req, res, next) {
     }
 
     res.render('gameball/widget', { gameballWidget: viewData });
+
+    return next();
+});
+
+/**
+ * Resolves Pay with Points state for the CURRENT session: balance, live
+ * hold, and a server-computed spend cap. Returns { enabled: false, ... }
+ * (never a partial/placeholder shape) the moment any prerequisite is unmet -
+ * same early-return pattern as resolveViewData above.
+ *
+ * gameballRedemptionApi is required INSIDE this function, not at module
+ * top, for the same reason gameballCredentials is a late require in
+ * resolveViewData: Gameball-Widget is remote-included on every page via
+ * pageFooter.isml, and this file's module-load path must stay free of
+ * anything with a LocalServiceRegistry.createService side effect - a broken
+ * or un-imported gameball.http.api service must never be able to take down
+ * the sitewide widget too, only this route.
+ *
+ * @param {Object} req - the SFRA request wrapper
+ * @returns {Object} the JSON body to serve
+ */
+function resolveRedeemState(req) {
+    if (!Site.getCurrent().getCustomPreferenceValue('gameballEnabled')) {
+        return { enabled: false };
+    }
+
+    var gameballCredentials = require('*/cartridge/scripts/services/gameballCredentials');
+    if (!gameballCredentials.getApiKey()) {
+        return { enabled: false };
+    }
+
+    if (!Site.getCurrent().getCustomPreferenceValue('gameballEnableRedemption')) {
+        return { enabled: false, reason: 'redemption_disabled' };
+    }
+
+    // CRITICAL: authenticated === true is the whole authorisation check -
+    // see the identical guard's own comment in resolveViewData above.
+    var raw = req.currentCustomer && req.currentCustomer.raw;
+    if (!raw || raw.authenticated !== true) {
+        return { enabled: false, reason: 'not_authenticated' };
+    }
+
+    var customerId = gameballIdentity.getRegisteredCustomerId(raw.profile);
+    if (!customerId) {
+        return { enabled: false, reason: 'no_customer_id' };
+    }
+
+    var basket = BasketMgr.getCurrentBasket();
+    if (!basket) {
+        return { enabled: false, reason: 'no_basket' };
+    }
+
+    var gameballRedemptionApi = require('*/cartridge/scripts/api/gameballRedemptionApi');
+    var balance = gameballRedemptionApi.getBalance(customerId);
+    if (!balance.ok || !balance.body) {
+        // Never surface a raw Gameball error to the browser - a balance
+        // lookup failure just means the feature quietly does not offer
+        // itself this page view.
+        return { enabled: false, reason: 'balance_unavailable' };
+    }
+
+    var currentHold = redemptionStateStore.readHold(basket);
+    var caps = redemptionReconcile.computeCaps(basket);
+
+    var availablePointsBalance = Number(balance.body.availablePointsBalance) || 0;
+    var availablePointsValue = Number(balance.body.availablePointsValue) || 0;
+    var pointsPerCurrencyUnit = availablePointsValue > 0 ? (availablePointsBalance / availablePointsValue) : 0;
+
+    // A CLIENT-FACING ESTIMATE ONLY, converting the server-computed currency
+    // cap (caps.maxHoldAmount) into an approximate points ceiling for the
+    // slider. Never authoritative: Cart-Redeem re-validates the requested
+    // points against the shopper's fresh balance and this same cap
+    // server-side before ever calling Gameball, and also handles the case
+    // where Gameball's own point-to-currency rounding differs from this
+    // estimate (releasing an over-cap hold immediately - see Cart.js).
+    var maxRedeemablePoints = pointsPerCurrencyUnit > 0
+        ? Math.min(availablePointsBalance, Math.floor(caps.maxHoldAmount * pointsPerCurrencyUnit))
+        : 0;
+
+    return {
+        enabled: true,
+        pointsName: balance.body.pointsName || '',
+        currency: balance.body.currency || '',
+        availablePointsBalance: availablePointsBalance,
+        availablePointsValue: availablePointsValue,
+        pendingPoints: Number(balance.body.pendingPoints) || 0,
+        currentHold: currentHold,
+        maxRedeemablePoints: maxRedeemablePoints > 0 ? maxRedeemablePoints : 0,
+        minOrderAmount: Number(Site.getCurrent().getCustomPreferenceValue('gameballRedemptionMinOrderAmount')) || 0
+    };
+}
+
+/**
+ * Serves Pay with Points state as plain JSON for the CURRENT session.
+ *
+ * A plain, directly browser-fetchable route - NOT server.middleware.include.
+ * Unlike Widget (embedded at render time into every page via the footer
+ * hook, so it must never leak shopper data into a cached page render), this
+ * is fetched client-side, lazily, only on cart/checkout - two page types,
+ * not every page - so there is no cached-page-embedding hazard to guard
+ * against here in the first place.
+ *
+ * @name Base/Gameball-RedeemState
+ * @function
+ * @memberof Gameball
+ * @param {middleware} - server.middleware.https
+ * @param {category} - sensitive (authenticated shopper's points balance)
+ * @param {renders} - json
+ * @param {serverfunction} - get
+ */
+server.get('RedeemState', server.middleware.https, function (req, res, next) {
+    var viewData = { enabled: false };
+
+    try {
+        viewData = resolveRedeemState(req);
+    } catch (e) {
+        // H17: a Gameball failure here must only mean the redeem panel does
+        // not render - never a broken cart/checkout page.
+        Logger.error('Gameball redeem-state lookup failed: {0}', e && e.message);
+        viewData = { enabled: false };
+    }
+
+    res.json(viewData);
 
     return next();
 });

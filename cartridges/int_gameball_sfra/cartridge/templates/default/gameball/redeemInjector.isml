@@ -1,0 +1,36 @@
+<iscomment>
+    Pay with Points injection point, rendered via the app.template.afterFooter
+    hook (scripts/hooks/afterFooter.js) - never a template overlay (H47).
+
+    Emits ONLY a static, non-shopper-scoped shell: an empty hidden root div
+    carrying three plain route URLs, and a deferred script tag. No site
+    preference VALUE, no customer data, nothing conditional is rendered here
+    - unlike gameball/widget.isml, whose entire template exists to embed one
+    shopper's own data and therefore MUST run through the uncached
+    Gameball-Widget remote include, this fragment never varies by request
+    and is safe on a cached page (I16 is trivially satisfied: nothing here
+    is conditional). The three URLs are plain route addresses, identical for
+    every shopper on the site - not a secret, not PII.
+
+    gameballRedeem.js does all of the real work client-side: detecting an
+    eligible page (cart/checkout), fetching Gameball-RedeemState, and
+    rendering the balance/slider UI into the DOM. Nothing here calls
+    Gameball, reads a site preference value, or reads a customer.
+
+    UNVERIFIED (no sandbox in this environment; base SFRA is not vendored in
+    this repo): that app_storefront_base's page.isml invokes
+    app.template.afterFooter through an encoding-exempt injection point
+    (e.g. <isprint encoding="off"/>) rather than plain ${...} interpolation,
+    which would HTML-escape this markup and render it as visible text
+    instead of a real DOM node. This is the widely-documented convention for
+    this specific, merchant-code-only extension point (never a place
+    customer data reaches) - confirm with View Source on a sandbox: a real
+    <div id="gameball-redeem-root"> element and a real <script> tag, not
+    their HTML-entity-escaped text.
+</iscomment>
+<div id="gameball-redeem-root"
+     data-redeem-state-url="${URLUtils.url('Gameball-RedeemState')}"
+     data-redeem-url="${URLUtils.url('Cart-Redeem')}"
+     data-redeem-remove-url="${URLUtils.url('Cart-RedeemRemove')}"
+     hidden></div>
+<script defer src="${URLUtils.staticURL('/js/gameballRedeem.js')}"></script>

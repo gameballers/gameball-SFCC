@@ -267,6 +267,52 @@ function buildExtra(order) {
 }
 
 /**
+ * Resolves the redemption block: the Gameball hold reference this order
+ * redeemed via item 08's Pay with Points, if any. Read primarily off the
+ * order-level PriceAdjustment item 08's redemptionStateStore.js created on
+ * the basket - SFCC copies Basket PriceAdjustments, including their custom
+ * attributes, onto the Order automatically at order creation, so this is the
+ * value item 08's own CheckoutServices-PlaceOrder append expects to find
+ * here already. Falls back to Order.custom.gbHoldReference, which that same
+ * append writes directly as a repair path if the automatic copy did not
+ * happen.
+ *
+ * couponsLockReference/couponCodes are never populated here - they belong to
+ * a separate, unbuilt Gameball-issued-coupon-code redemption feature
+ * (build-plan section 8.4 "Model B") this cartridge has not built.
+ *
+ * Omits the whole redemption object rather than sending an empty one (H31)
+ * when no hold reference is found - the overwhelming majority of orders,
+ * which never touched item 08 at all.
+ * @param {dw.order.Order} order
+ * @returns {{pointsHoldReference: string}|null}
+ */
+function resolveRedemption(order) {
+    var holdReference = '';
+
+    try {
+        var adjustments = order.getPriceAdjustments();
+        if (adjustments) {
+            var it = adjustments.iterator();
+            while (it.hasNext() && !holdReference) {
+                var adjustment = it.next();
+                if (adjustment.custom && adjustment.custom.gbHoldReference) {
+                    holdReference = adjustment.custom.gbHoldReference;
+                }
+            }
+        }
+    } catch (e) {
+        holdReference = '';
+    }
+
+    if (!holdReference) {
+        holdReference = order.custom.gbHoldReference || '';
+    }
+
+    return holdReference ? { pointsHoldReference: holdReference } : null;
+}
+
+/**
  * Builds the full request body for POST integrations/orders from a placed
  * SFCC order. Assumes the caller (gameballOrderApi.js) has already run
  * orderSyncGate - this module only builds the payload, it does not decide
@@ -325,6 +371,11 @@ function build(order) {
     var lineItems = lineItemPayload.build(order);
     if (lineItems && lineItems.length) {
         payload.lineItems = lineItems;
+    }
+
+    var redemption = resolveRedemption(order);
+    if (redemption) {
+        payload.redemption = redemption;
     }
 
     return payload;

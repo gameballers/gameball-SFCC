@@ -268,6 +268,39 @@
                 <externally-managed-flag>false</externally-managed-flag>
                 <default-value>6</default-value>
             </attribute-definition>
+            <!-- item 08 -->
+            <attribute-definition attribute-id="gameballEnableRedemption">
+                <display-name xml:lang="x-default">Enable Pay with Points</display-name>
+                <description xml:lang="x-default">Master switch for "Pay with Points" - letting a shopper hold and redeem Gameball points as a direct discount on cart/checkout. Off by default. Requires a registered, authenticated shopper; guest baskets never see this feature regardless of this setting.</description>
+                <type>boolean</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>false</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRedemptionMaxPercentOfBasket">
+                <display-name xml:lang="x-default">Redemption Max Percent of Basket</display-name>
+                <description xml:lang="x-default">Caps how much of the basket's eligible total (gross price, before the Gameball discount itself) a single points hold may cover, as a percentage. Gameball's hold endpoint has no awareness of the SFCC basket total - this is the sole SFCC-side guard against a hold that would exceed, or come close to exceeding, the whole order.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>100</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRedemptionMinOrderAmount">
+                <display-name xml:lang="x-default">Redemption Min Order Amount</display-name>
+                <description xml:lang="x-default">The minimum amount, in the site's default currency, that must remain payable after a points redemption is applied. A requested hold that would drop the basket below this floor is rejected before any Gameball call is made. Some payment processors reject a $0.00 authorization; raise this above 0 if yours does.</description>
+                <type>double</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>0</default-value>
+            </attribute-definition>
+            <attribute-definition attribute-id="gameballRedemptionAssumedHoldTtlMinutes">
+                <display-name xml:lang="x-default">Redemption Assumed Hold TTL (Minutes)</display-name>
+                <description xml:lang="x-default">COSMETIC ONLY - never used for release or enforcement. Neither the hold-create nor the hold-status Gameball endpoint returns an expiry timestamp, so this value is added to "now" purely to show the shopper an approximate countdown, and must be kept in sync with your Gameball dashboard's actual hold-timeout setting by hand - there is no way to read that setting via API.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+                <default-value>30</default-value>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballConfigs">
@@ -307,6 +340,14 @@
                 <attribute attribute-id="gameballRefundLookbackDays"/>
                 <attribute attribute-id="gameballRefundOrphanMaxHours"/>
                 <attribute attribute-id="gameballRefundMaxAttempts"/>
+            </attribute-group>
+            <!-- item 08 -->
+            <attribute-group group-id="GameballRedemptionConfigs">
+                <display-name xml:lang="x-default">Gameball Pay with Points</display-name>
+                <attribute attribute-id="gameballEnableRedemption"/>
+                <attribute attribute-id="gameballRedemptionMaxPercentOfBasket"/>
+                <attribute attribute-id="gameballRedemptionMinOrderAmount"/>
+                <attribute attribute-id="gameballRedemptionAssumedHoldTtlMinutes"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
@@ -451,6 +492,21 @@
                 <mandatory-flag>false</mandatory-flag>
                 <externally-managed-flag>false</externally-managed-flag>
             </attribute-definition>
+            <!-- item 08 -->
+            <attribute-definition attribute-id="gbHoldReference">
+                <display-name xml:lang="x-default">Gameball Hold Reference</display-name>
+                <description xml:lang="x-default">The Gameball hold reference redeemed on this order, if any. Normally copied automatically from the order's own PriceAdjustment (see PriceAdjustment.custom.gbHoldReference); written directly here only as a fallback if that automatic copy did not happen. This is what orderPayload.js reads to populate redemption.pointsHoldReference on retry.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbRedeemedPoints">
+                <display-name xml:lang="x-default">Gameball Redeemed Points</display-name>
+                <description xml:lang="x-default">Points redeemed on this order via the hold/PriceAdjustment path. Distinct from any points earned on this order. BM-visible summary - the authoritative per-adjustment record is PriceAdjustment.custom.gbPointsRedeemed.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
         </custom-attribute-definitions>
         <group-definitions>
             <attribute-group group-id="GameballOrder">
@@ -470,6 +526,9 @@
                 <attribute attribute-id="gbTrackedAt"/>
                 <attribute attribute-id="gbTrackedTotalPaid"/>
                 <attribute attribute-id="gbTrackedCurrency"/>
+                <!-- appended by item 08 -->
+                <attribute attribute-id="gbHoldReference"/>
+                <attribute attribute-id="gbRedeemedPoints"/>
             </attribute-group>
             <!-- item 07 -->
             <attribute-group group-id="GameballOrderRefund">
@@ -538,6 +597,75 @@
                 <attribute attribute-id="gbGameballId"/>
                 <attribute attribute-id="gbSyncSource"/>
                 <attribute attribute-id="gbLastSyncError"/>
+            </attribute-group>
+        </group-definitions>
+    </type-extension>
+    <!-- item 08: Pay with Points. Not added to the existing Order/Profile
+         type-extensions above because Basket and PriceAdjustment have never
+         been extended by this cartridge before now. -->
+    <type-extension type-id="Basket">
+        <custom-attribute-definitions>
+            <attribute-definition attribute-id="gbHoldReference">
+                <display-name xml:lang="x-default">Gameball Hold Reference</display-name>
+                <description xml:lang="x-default">The active Gameball transactions/hold holdReference for this basket, if any. Set the moment a hold is created, cleared the moment it is released or converted into an order at placement. Empty means no live hold - this is the field every other module in this feature checks first.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbHoldAmount">
+                <display-name xml:lang="x-default">Gameball Hold Amount</display-name>
+                <description xml:lang="x-default">The currency amount of the active hold, in the basket's currency - exactly the holdAmount Gameball returned, never recomputed. This is the source of truth the PriceAdjustment's own price is set from and reconciled against on every basket change.</description>
+                <type>double</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbHoldPointsRedeemed">
+                <display-name xml:lang="x-default">Gameball Hold Points Redeemed</display-name>
+                <description xml:lang="x-default">The points count of the active hold - exactly the holdEquivalentPoints Gameball returned. Displayed to the shopper and copied onto the Order's own gbRedeemedPoints at placement without a second lookup.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbHoldExpiresAt">
+                <display-name xml:lang="x-default">Gameball Hold Expires At (Estimated)</display-name>
+                <description xml:lang="x-default">NOT AUTHORITATIVE. Neither the hold-create nor hold-status Gameball endpoint documents an expiry timestamp in its response, so this is computed as "now + gameballRedemptionAssumedHoldTtlMinutes" purely for a shopper-facing countdown. Never read by any release or reconciliation logic - Gameball's own dashboard timeout is the only real enforcement.</description>
+                <type>datetime</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+        </custom-attribute-definitions>
+        <group-definitions>
+            <attribute-group group-id="Gameball">
+                <display-name xml:lang="x-default">Gameball</display-name>
+                <attribute attribute-id="gbHoldReference"/>
+                <attribute attribute-id="gbHoldAmount"/>
+                <attribute attribute-id="gbHoldPointsRedeemed"/>
+                <attribute attribute-id="gbHoldExpiresAt"/>
+            </attribute-group>
+        </group-definitions>
+    </type-extension>
+    <type-extension type-id="PriceAdjustment">
+        <custom-attribute-definitions>
+            <attribute-definition attribute-id="gbHoldReference">
+                <display-name xml:lang="x-default">Gameball Hold Reference</display-name>
+                <description xml:lang="x-default">The Gameball hold reference this price adjustment represents. Copied verbatim from the basket's gbHoldReference at creation time. SFCC copies Basket price adjustments, including their custom attributes, onto the Order automatically at order creation - this is how orderPayload.js finds the redemption block to report at order-tracking time.</description>
+                <type>string</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+            <attribute-definition attribute-id="gbPointsRedeemed">
+                <display-name xml:lang="x-default">Gameball Points Redeemed</display-name>
+                <description xml:lang="x-default">The points count this discount represents, copied from the basket's gbHoldPointsRedeemed at creation time. Informational - the actual burn happens via the redemption.pointsHoldReference reported at order-tracking time, not via this field.</description>
+                <type>int</type>
+                <mandatory-flag>false</mandatory-flag>
+                <externally-managed-flag>false</externally-managed-flag>
+            </attribute-definition>
+        </custom-attribute-definitions>
+        <group-definitions>
+            <attribute-group group-id="Gameball">
+                <display-name xml:lang="x-default">Gameball</display-name>
+                <attribute attribute-id="gbHoldReference"/>
+                <attribute attribute-id="gbPointsRedeemed"/>
             </attribute-group>
         </group-definitions>
     </type-extension>
