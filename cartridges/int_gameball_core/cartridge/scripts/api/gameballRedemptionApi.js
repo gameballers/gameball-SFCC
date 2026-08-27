@@ -101,10 +101,20 @@ function createHold(customerId, pointsToHold, options) {
         var verdict = gameballErrors.classify(result, REDEMPTION_SCOPE);
         var ok = verdict.disposition === DISPOSITION.SUCCESS;
 
+        var rawBody = ok ? readBody(result) : null;
+        var mappedBody = undefined;
+        if (rawBody) {
+            mappedBody = {
+                holdAmount: Number(rawBody.amount) || Number(rawBody.holdAmount) || 0,
+                holdEquivalentPoints: Number(rawBody.holdPoints) || Number(rawBody.holdEquivalentPoints) || 0,
+                holdReference: rawBody.holdReference
+            };
+        }
+
         return {
             ok: ok,
             disposition: verdict.disposition,
-            body: ok ? (readBody(result) || undefined) : undefined,
+            body: mappedBody,
             code: verdict.code,
             requestId: verdict.requestId,
             message: verdict.message

@@ -95,7 +95,7 @@ server.post('Redeem', server.middleware.https, csrfProtection.validateAjaxReques
             } else {
                 Logger.error('Gameball hold create failed for customer {0}: disposition={1} code={2} message={3}',
                     gate.customerId, hold.disposition, hold.code, hold.message);
-                res.json({ success: false, error: 'try_again' });
+                res.json({ success: false, error: 'try_again', gameballError: hold.message, gameballCode: hold.code });
             }
             return next();
         }

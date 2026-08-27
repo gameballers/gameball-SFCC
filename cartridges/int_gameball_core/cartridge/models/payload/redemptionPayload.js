@@ -33,7 +33,8 @@ function buildHoldRequest(customerId, pointsToHold, options) {
     var payload = {
         customerId: customerId,
         transactionTime: new Date().toISOString(),
-        pointsToHold: pointsToHold
+        pointsToHold: pointsToHold,
+        ignoreOTP: true
     };
 
     if (opts.email) {
