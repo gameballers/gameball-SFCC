@@ -8,6 +8,16 @@ var server = require('server');
 var Site = require('dw/system/Site');
 var BasketMgr = require('dw/order/BasketMgr');
 var Logger = require('dw/system/Logger').getLogger('Gameball', 'gameball.widget');
+// Required eagerly, against the late-require pattern the rest of this file
+// uses for gameballCredentials/gameballRedemptionApi below - those are late
+// because LocalServiceRegistry.createService runs at module load and this
+// file's module-load path must survive a broken/un-imported Gameball
+// service (see resolveViewData's own comment on the same subject).
+// csrfProtection has no such side effect - it is the same stock SFRA
+// middleware module Cart.js already requires eagerly at its own top
+// (Cart.js:8) - so there is nothing here for a boundary try/catch to need to
+// contain.
+var csrfProtection = require('*/cartridge/scripts/middleware/csrf');
 var gameballJson = require('*/cartridge/scripts/util/gameballJson');
 var widgetPayload = require('*/cartridge/models/payload/widgetPayload');
 var gameballIdentity = require('*/cartridge/models/identity/gameballIdentity');
@@ -248,15 +258,33 @@ function resolveRedeemState(req) {
  * not every page - so there is no cached-page-embedding hazard to guard
  * against here in the first place.
  *
+ * csrfProtection.generateToken is wired into THIS route, and must never be
+ * wired anywhere near gameball/redeemInjector.isml or its afterFooter hook.
+ * That fragment's own header comment spells out why: it renders on cached
+ * AND uncached page loads alike and is documented to emit only static,
+ * non-shopper-scoped markup, because SFCC's page-cache key does not include
+ * the customer or the session - a token minted for one shopper's session
+ * embedded there would be replayed to every subsequent visitor served that
+ * same cache entry, which is a real CSRF-bypass hazard for other shoppers,
+ * not merely a cosmetic one. This route carries no such risk: it is fetched
+ * lazily by gameballRedeem.js after the page has already rendered, is never
+ * cached itself (server.middleware.https, no <iscache> anywhere in this
+ * response path), and mints a fresh token bound to the CALLER'S OWN session
+ * on every request - exactly the "fetched fresh every time" contract
+ * dw.web.CSRFProtection tokens require.
+ *
  * @name Base/Gameball-RedeemState
  * @function
  * @memberof Gameball
  * @param {middleware} - server.middleware.https
- * @param {category} - sensitive (authenticated shopper's points balance)
+ * @param {middleware} - csrfProtection.generateToken
+ * @param {category} - sensitive (authenticated shopper's points balance,
+ *   plus a session-bound CSRF token - see the note above on why this is the
+ *   only route in the cartridge allowed to mint one)
  * @param {renders} - json
  * @param {serverfunction} - get
  */
-server.get('RedeemState', server.middleware.https, function (req, res, next) {
+server.get('RedeemState', server.middleware.https, csrfProtection.generateToken, function (req, res, next) {
     var viewData = { enabled: false };
 
     try {
@@ -266,6 +294,26 @@ server.get('RedeemState', server.middleware.https, function (req, res, next) {
         // not render - never a broken cart/checkout page.
         Logger.error('Gameball redeem-state lookup failed: {0}', e && e.message);
         viewData = { enabled: false };
+    }
+
+    // Attached here, after resolveRedeemState returns, rather than inside it:
+    // this keeps the CSRF attachment to exactly one place regardless of which
+    // of resolveRedeemState's several early-return branches fired (feature
+    // off, no credential, redemption off, unauthenticated, no basket, balance
+    // lookup failed), instead of repeating the same two lines in six spots or
+    // threading res.locals through resolveRedeemState's signature just to
+    // reach this one field. res.locals.csrf is only populated when the
+    // generateToken middleware above actually ran and minted a token, so the
+    // guard also covers the case where that middleware itself is ever removed
+    // or fails open - the response degrades to no csrf key rather than a
+    // half-built one. gameballRedeem.js reads csrf.tokenName as the POST
+    // field name and csrf.token as its value for both Cart-Redeem and
+    // Cart-RedeemRemove, rather than the cookie-based double-submit pattern
+    // the panel used to (and SFCC's dw.web.CSRFProtection does not implement,
+    // hence CSRF-AjaxFail on every Apply/Remove before this fix) - see
+    // gameballRedeem.js for the client-side half.
+    if (res.locals.csrf) {
+        viewData.csrf = { token: res.locals.csrf.token, tokenName: res.locals.csrf.tokenName };
     }
 
     res.json(viewData);
