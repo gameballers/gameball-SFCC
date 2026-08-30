@@ -76,7 +76,7 @@
             </attribute-definition>
             <attribute-definition attribute-id="gbSource">
                 <display-name xml:lang="x-default">Gameball Erasure Source</display-name>
-                <description xml:lang="x-default">Which path captured this request: DATA_API (an OCAPI/SCAPI Data API customer delete), HELPER_API (merchant code, a DSAR controller or a partner cartridge calling gameballPrivacyApi.requestErasure), or BM_MANUAL (an operator-initiated request through gameballPrivacyApi.requestErasureById). Business Manager customer deletion is NOT hookable in SFCC and never appears here - see docs/gameball-gdpr.md.</description>
+                <description xml:lang="x-default">Which path captured this request: DATA_API (an OCAPI/SCAPI Data API customer delete), HELPER_API (merchant code, a DSAR controller or a partner cartridge calling gameballPrivacyApi.requestErasure), or BM_MANUAL (an operator-initiated request through gameballPrivacyApi.requestErasureById). Business Manager customer deletion is NOT hookable in SFCC and never appears here.</description>
                 <type>string</type>
                 <mandatory-flag>false</mandatory-flag>
                 <externally-managed-flag>false</externally-managed-flag>

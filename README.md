@@ -29,7 +29,6 @@ Salesforce B2C Commerce (SFCC) instance.
 | `cartridges/int_gameball_sfra` | SFRA controllers, the storefront widget, and the checkout redemption UI. |
 | `metadata/site_template` | Custom preferences, custom objects, jobs and service definitions to import into your instance. |
 | `scripts/set-site.js` | Sets your Site ID in `jobs.xml` before you import the metadata. |
-| `docs/` | Feature documentation — read these before enabling refunds or erasure. |
 | `INSTALLATION.md` | Full step-by-step installation and configuration guide. |
 
 ## Requirements
@@ -71,14 +70,19 @@ Four jobs are imported with the metadata:
 > before importing, then review the schedule of each job before enabling it. Schedule
 > `Gameball Customer Erasure` on exactly one site — its custom object is organization-scoped.
 
-## Documentation
+## Before you enable refunds or erasure
 
-- **[docs/refunds-integration-guide.md](docs/refunds-integration-guide.md)** — how refunds actually
-  reach Gameball. Automatic detection covers full pre-shipment cancellations only; everything else
-  goes through `submitRefund()`. Read this before enabling `gameballEnableRefunds`.
-- **[docs/gameball-gdpr.md](docs/gameball-gdpr.md)** — what customer erasure does, which deletion
-  paths the cartridge cannot see, and why it ships off. Gameball's delete is a **hard delete with no
-  undo**. Read this before enabling `gameballErasureEnabled`.
+Both features ship **off**, and both have limits worth understanding before you turn them on. Ask
+your Gameball contact for the detailed guide on either one.
+
+- **Refunds (`gameballEnableRefunds`)** — automatic detection watches `order.status` and therefore
+  covers full pre-shipment cancellations only. Post-shipment returns, partial refunds, appeasements
+  and chargebacks have no SFCC-native representation to observe; those reach Gameball through your
+  own code calling `submitRefund()`. Plan your returns process around that API, not the automatic
+  path.
+- **Erasure (`gameballErasureEnabled`)** — Gameball's delete is a **hard delete with no undo**.
+  There is no anonymize endpoint and no soft delete, and a deleted profile, its balance and its
+  history cannot be restored.
 
 ## Support
 

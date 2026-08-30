@@ -26,7 +26,7 @@
                 "@supports-parallel-execution": "false",
                 "@supports-site-context": "true",
                 "@supports-organization-context": "false",
-                "description": "Deletes customers from Gameball for whom a right-to-be-forgotten request was captured. Gameball's delete is a HARD delete with no undo. Schedule this job on exactly ONE site: its Custom Object is organization-scoped, so a second site's instance would only produce redundant calls. See docs/gameball-gdpr.md.",
+                "description": "Deletes customers from Gameball for whom a right-to-be-forgotten request was captured. Gameball's delete is a HARD delete with no undo. Schedule this job on exactly ONE site: its Custom Object is organization-scoped, so a second site's instance would only produce redundant calls.",
                 "module": "int_gameball_core/cartridge/scripts/job/erasureDrain.js",
                 "function": "execute",
                 "transactional": "false",

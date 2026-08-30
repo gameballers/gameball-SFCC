@@ -8,6 +8,9 @@ node_modules/
 # Build output
 metadata/site_template.zip
 
+# Internal documentation — not distributed with the cartridge
+docs/
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db

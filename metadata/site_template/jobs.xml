@@ -18,7 +18,7 @@
         </triggers>
     </job>
     <job job-id="Gameball Customer Erasure" priority="0">
-        <description>Drains captured right-to-be-forgotten requests to Gameball. This is a HARD delete with no undo - read docs/gameball-gdpr.md before enabling it. Schedule this job on EXACTLY ONE site: its Custom Object is organization-scoped, so a second site running it would only produce redundant calls. The trigger ships DISABLED and the context site-id below is a placeholder that must be changed before the job is enabled.</description>
+        <description>Drains captured right-to-be-forgotten requests to Gameball. This is a HARD delete with no undo - there is no anonymize endpoint and no soft delete, and a deleted profile cannot be restored. Schedule this job on EXACTLY ONE site: its Custom Object is organization-scoped, so a second site running it would only produce redundant calls. The trigger ships DISABLED and the context site-id below is a placeholder that must be changed before the job is enabled.</description>
         <flow>
             <context site-id="RefArch"/>
             <step step-id="GB-CustomerErasure" type="custom.Gameball.CustomerErasure" enforce-restart="false">
@@ -52,7 +52,7 @@
         </triggers>
     </job>
     <job job-id="Gameball Refund Detector" priority="0">
-        <description>Sends a full Gameball points reversal for orders that were tracked and have since been cancelled or failed, and retries any refund left undelivered by an earlier run or by gameballRefundApi.submitRefund's deferSend path. Catches roughly 10-20% of refund events by count and less by value - see docs/refunds-integration-guide.md. The trigger ships DISABLED and the context site-id below is a placeholder that must be changed before the job is enabled.</description>
+        <description>Sends a full Gameball points reversal for orders that were tracked and have since been cancelled or failed, and retries any refund left undelivered by an earlier run or by gameballRefundApi.submitRefund's deferSend path. Catches full pre-shipment cancellations only - roughly 10-20% of refund events by count and less by value. Every other refund reaches Gameball through your own code calling gameballRefundApi.submitRefund. The trigger ships DISABLED and the context site-id below is a placeholder that must be changed before the job is enabled.</description>
         <flow>
             <context site-id="RefArch"/>
             <step step-id="GB-RefundDetect" type="custom.Gameball.RefundDetect" enforce-restart="false">
