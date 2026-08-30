@@ -4,7 +4,8 @@
   "description": "Gameball Loyalty Integration Cartridge for Salesforce B2C Commerce",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "set-site": "node scripts/set-site.js"
   },
   "author": "Gameball",
   "license": "ISC",

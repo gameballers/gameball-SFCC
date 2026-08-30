@@ -2,124 +2,68 @@
 <jobs xmlns="http://www.demandware.com/xml/impex/jobs/2015-07-01">
     <job job-id="Gameball Customer Delta" priority="0">
         <description>Sweeps customer profiles changed since the last run and upserts the changed ones to Gameball. This is the only coverage for Business Manager profile edits and customer import jobs, which fire no hook, and it is also the retry path for any customer sync that failed inline. The trigger ships DISABLED and the context site-id below is a placeholder that must be changed before the job is enabled.</description>
-        <parameters/>
         <flow>
             <context site-id="RefArch"/>
             <step step-id="GB-CustomerDelta" type="custom.Gameball.CustomerDelta" enforce-restart="false">
-                <description/>
-                <parameters/>
-                <rules/>
             </step>
         </flow>
-        <rules/>
         <triggers>
             <run-recurring enabled="false">
                 <recurrence>
                     <date-from>2026-01-01Z</date-from>
                     <start-time>00:10:00.000Z</start-time>
                     <interval>1h</interval>
-                    <day-of-week>
-                        <weekday>Monday</weekday>
-                        <weekday>Tuesday</weekday>
-                        <weekday>Wednesday</weekday>
-                        <weekday>Thursday</weekday>
-                        <weekday>Friday</weekday>
-                        <weekday>Saturday</weekday>
-                        <weekday>Sunday</weekday>
-                    </day-of-week>
                 </recurrence>
             </run-recurring>
         </triggers>
     </job>
     <job job-id="Gameball Customer Erasure" priority="0">
         <description>Drains captured right-to-be-forgotten requests to Gameball. This is a HARD delete with no undo - read docs/gameball-gdpr.md before enabling it. Schedule this job on EXACTLY ONE site: its Custom Object is organization-scoped, so a second site running it would only produce redundant calls. The trigger ships DISABLED and the context site-id below is a placeholder that must be changed before the job is enabled.</description>
-        <parameters/>
         <flow>
             <context site-id="RefArch"/>
             <step step-id="GB-CustomerErasure" type="custom.Gameball.CustomerErasure" enforce-restart="false">
-                <description/>
-                <parameters/>
-                <rules/>
             </step>
         </flow>
-        <rules/>
         <triggers>
             <run-recurring enabled="false">
                 <recurrence>
                     <date-from>2026-01-01Z</date-from>
                     <start-time>00:05:00.000Z</start-time>
                     <interval>30m</interval>
-                    <day-of-week>
-                        <weekday>Monday</weekday>
-                        <weekday>Tuesday</weekday>
-                        <weekday>Wednesday</weekday>
-                        <weekday>Thursday</weekday>
-                        <weekday>Friday</weekday>
-                        <weekday>Saturday</weekday>
-                        <weekday>Sunday</weekday>
-                    </day-of-week>
                 </recurrence>
             </run-recurring>
         </triggers>
     </job>
     <job job-id="Gameball Order Retry" priority="0">
         <description>Re-attempts Gameball order tracking for orders left in gbTrackState FAILED by a transient API failure. Bounded by gameballRetryMaxAttempts per order and gameballRetryMaxOrdersPerRun per run. The trigger ships DISABLED and the context site-id below is a placeholder that must be changed before the job is enabled.</description>
-        <parameters/>
         <flow>
             <context site-id="RefArch"/>
             <step step-id="GB-OrderRetry" type="custom.Gameball.OrderRetry" enforce-restart="false">
-                <description/>
-                <parameters/>
-                <rules/>
             </step>
         </flow>
-        <rules/>
         <triggers>
             <run-recurring enabled="false">
                 <recurrence>
                     <date-from>2026-01-01Z</date-from>
                     <start-time>00:20:00.000Z</start-time>
                     <interval>1h</interval>
-                    <day-of-week>
-                        <weekday>Monday</weekday>
-                        <weekday>Tuesday</weekday>
-                        <weekday>Wednesday</weekday>
-                        <weekday>Thursday</weekday>
-                        <weekday>Friday</weekday>
-                        <weekday>Saturday</weekday>
-                        <weekday>Sunday</weekday>
-                    </day-of-week>
                 </recurrence>
             </run-recurring>
         </triggers>
     </job>
     <job job-id="Gameball Refund Detector" priority="0">
         <description>Sends a full Gameball points reversal for orders that were tracked and have since been cancelled or failed, and retries any refund left undelivered by an earlier run or by gameballRefundApi.submitRefund's deferSend path. Catches roughly 10-20% of refund events by count and less by value - see docs/refunds-integration-guide.md. The trigger ships DISABLED and the context site-id below is a placeholder that must be changed before the job is enabled.</description>
-        <parameters/>
         <flow>
             <context site-id="RefArch"/>
             <step step-id="GB-RefundDetect" type="custom.Gameball.RefundDetect" enforce-restart="false">
-                <description/>
-                <parameters/>
-                <rules/>
             </step>
         </flow>
-        <rules/>
         <triggers>
             <run-recurring enabled="false">
                 <recurrence>
                     <date-from>2026-01-01Z</date-from>
                     <start-time>00:40:00.000Z</start-time>
                     <interval>1h</interval>
-                    <day-of-week>
-                        <weekday>Monday</weekday>
-                        <weekday>Tuesday</weekday>
-                        <weekday>Wednesday</weekday>
-                        <weekday>Thursday</weekday>
-                        <weekday>Friday</weekday>
-                        <weekday>Saturday</weekday>
-                        <weekday>Sunday</weekday>
-                    </day-of-week>
                 </recurrence>
             </run-recurring>
         </triggers>
