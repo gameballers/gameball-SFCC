@@ -17,9 +17,9 @@ enabled for new instances, so there is no SFCC-native representation of "this sh
 of the five items they bought" for this cartridge, or any cartridge, to observe. What SFCC *does*
 always have is `order.status`, and that is exactly what the automatic path watches.
 
-Describe this feature to merchants and in the LINK listing as **"automatic cancellation reversal, plus
-a documented refund API for your OMS"** - never as "refund sync". "Refund sync" implies a completeness
-this feature does not have.
+Think of this feature as **"automatic cancellation reversal, plus a documented refund API for your
+OMS"** - not as "refund sync". "Refund sync" implies a completeness this feature does not have, so
+plan your returns process around the API rather than the automatic path.
 
 ## 2. What the automatic path does
 

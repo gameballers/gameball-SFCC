@@ -1,2 +1,16 @@
+# SFCC instance credentials — never commit these
 dw.json
 cartridges/dw.json
+
+# Dependencies
+node_modules/
+
+# Build output
+metadata/site_template.zip
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
