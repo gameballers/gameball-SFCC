@@ -31,6 +31,8 @@ Salesforce Commerce Cloud uses a cartridge path to determine file priority. You 
    * **Format:** `int_gameball_sfra:int_gameball_core:app_storefront_base`
 4. Click **Apply**.
 
+> **The order matters beyond file priority.** `int_gameball_sfra` ships its own `pageFooter.isml` that already embeds the loyalty widget, so placing it ahead of `app_storefront_base` is what puts the widget on your storefront. No template editing is required.
+
 ![Cartridge Path Configuration](images/1-cartridge-path.png)
 
 ---
@@ -146,21 +148,7 @@ Gameball relies on automated jobs to catch offline customer modifications, sync 
 
 ---
 
-## 7. Frontend Widget Integration
-
-If you are using SFRA, you need to include the Gameball widget in your storefront templates.
-
-1. Open your global footer template, usually located at:
-   `app_storefront_base/cartridge/templates/default/components/footer/pageFooter.isml`
-2. Add the following line just before the closing `</footer>` or `</body>` tag:
-   ```html
-   <isinclude url="${URLUtils.url('Gameball-Widget')}"/>
-   ```
-3. This will securely and dynamically inject the Gameball Floating Widget onto all pages for both guests and logged-in customers using a Remote Include (which ensures it bypasses static page caching).
-
----
-
-## 8. Specific Feature Configuration
+## 7. Specific Feature Configuration
 
 ### Guest Checkouts
 
@@ -197,7 +185,7 @@ This feature allows logged-in shoppers to dynamically slide and apply their Game
 
 ---
 
-## 9. Verification
+## 8. Verification
 
 To verify the installation was successful:
 
